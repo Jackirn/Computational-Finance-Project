@@ -88,7 +88,6 @@ for i = 1:length(ret_range)
     w_opt = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub); % fmincon is a nonlinear programming solver.
     FrontierVola(i) = sqrt(w_opt'*V*w_opt);
     FrontierRet(i)  = w_opt'*ExpRet';
-    WeightsFrontier(:,i) = w_opt;
 end
 
 % equal weight portfolio
@@ -101,9 +100,8 @@ ret_EW = WeightsEW'*ExpRet';
 
 [~, idx_MVP] = min(FrontierVola);
 
-vol_MVP = FrontierVola(idx_MVP);
-ret_MVP = FrontierRet(idx_MVP);
-w_MVP = WeightsFrontier(:, idx_MVP);
+vol_ = FrontierVola(idx_MSRP);
+ret_MSRP = FrontierRet(idx_MSRP);
 
 % MSRP with the above constraints
 
@@ -111,7 +109,6 @@ rf = 0;
 
 SharpeFrontier = (FrontierRet - rf) ./ FrontierVola;
 [~, idx_MSRP] = max(SharpeFrontier);
-w_MSRP = WeightsFrontier(:, idx_MSRP);
 
 vol_MSRP = FrontierVola(idx_MSRP);
 ret_MSRP = FrontierRet(idx_MSRP);
