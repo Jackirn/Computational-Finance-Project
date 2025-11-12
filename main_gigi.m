@@ -4,7 +4,10 @@ clc
 
 %% From table to timetable
 
-path_map = '';
+baseDir = fileparts(mfilename('fullpath')); 
+csv     = fullfile(baseDir, 'csv');         
+addpath(csv, '');                           
+path_map = [csv filesep];
 filename = 'asset_prices.csv';
 
 table_prices = readtable(strcat(path_map, filename));
@@ -54,7 +57,6 @@ end
 
 figure;
 scatter(VolaPtfs, RetPtfs, [], SharpePtfs, 'filled');
-hold on;
 
 %% Compute the Efficient Frontier
 
@@ -88,22 +90,31 @@ for i = 1:length(ret_range)
     FrontierRet(i)  = w_opt'*ExpRet';
 end
 
-fun = @(w) w'*V*w;
-x0  = ones(NumAssets,1)/NumAssets;
-lb  = zeros(NumAssets,1);
-ub  = ones(NumAssets,1);
-
-Aeq_MVP = ones(1,NumAssets);
-beq_MVP = 1;
-
-w_MVP = fmincon(fun, x0, A_ineq, b_ineq, Aeq_MVP, beq_MVP, lb, ub);
-% w_MVP represents the Minimum Variance Portfolio with the constraints said above.
+% equal weight portfolio
 
 WeightsEW = (1/NumAssets).*ones(NumAssets,1);
 
-plot(FrontierVola, FrontierRet,'LineWidth', 4)
-hold on
-scatter(sqrt(WeightsEW'*V*WeightsEW), WeightsEW'*ExpRet', 'filled')
-hold on
-scatter(sqrt(w_MVP'*V*w_MVP), w_MVP'*ExpRet','filled')
-legend('Efficient Frontier','EW', 'MVP')
+% MVP with the above constraints
+
+Aeq_MVP = ones(1,NumAssets);
+beq_MVP = 1;
+w_MVP = fmincon(fun, x0, A_ineq, b_ineq, Aeq_MVP, beq_MVP, lb, ub);
+
+vol_MVP  = sqrt(w_MVP'*V*w_MVP);
+ret_MVP  = w_MVP'*ExpRet';
+
+% MSRP with the above constraints
+
+rf = 0;
+fun_MSRP = @(w) - ( (w'*ExpRet' - rf) / sqrt(w'*V*w) );
+Aeq_MSRP = ones(1,NumAssets);
+beq_MSRP = 1;
+w_MSRP = fmincon(fun_MSRP, x0, A_ineq, b_ineq, Aeq_MSRP, beq_MSRP, lb, ub);
+
+Ret_MSRP = w_MSRP'*ExpRet';
+Vola_MSRP = sqrt(w_MSRP'*V*w_MSRP);
+
+%% Plot of the fronteir and the MVP and MSRP 
+
+figure;
+plot(FrontierRet, FrontierVola);
