@@ -356,10 +356,6 @@ mu_BL = A \ b;
 % Post covariance
 covBL = inv(P'/Omega*P + inv(C));
 
-%term1 = tau * V * P';
-%term2 = P * tau * V * P' + Omega;
-%mu_BL = mu_MKT + term1 / term2 * (q - P * mu_MKT);
-
 fprintf('\nBlack-Litterman Posterior Returns - Top Changes:\n');
 fprintf('Asset\t\tPrior\t\tPosterior\tChange\t\t%% Change\n');
 changes = mu_BL - mu_MKT;
