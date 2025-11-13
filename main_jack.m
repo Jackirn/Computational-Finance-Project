@@ -6,26 +6,28 @@ addpath('plots & prints')
 
 %% Data
 
-% Asset Prices
 baseDir = fileparts(mfilename('fullpath')); 
 csv     = fullfile(baseDir, 'csv');         
 addpath(csv, '');                           
 path_map = [csv filesep];
+
+% Asset Prices
 filename = 'asset_prices.csv';
-
 table_prices = readtable(strcat(path_map, filename));
-
-% Capitalization weights
-path_map2 = [csv filesep];
-filename2 = 'capitalization_weights.csv';
-
-table_capw2 = readtable(strcat(path_map2,filename2));
 
 dt = table_prices(:,1).Variables;
 values = table_prices(:,2:end).Variables;
 nm = table_prices.Properties.VariableNames(2:end);
 
 myPrice_dt = array2timetable(values, 'RowTimes', dt, 'VariableNames', nm);
+
+% Capitalization weights
+filename2 = 'capitalization_weights.csv';
+table_capw2 = readtable(strcat(path_map,filename2));
+
+% Mapping Table
+filename = 'mapping_table.csv';
+table = readtable(strcat(path_map, filename));
 
 %% Selection of a subset of Dates (In-Sample Dataset)
 
@@ -254,11 +256,6 @@ tau = 1/length(logret); % 1/N_obs.
 P = zeros(v, NumAssets);  
 q = zeros(v, 1);          % expected returns from views
 Omega = zeros(v);         % uncertainty of views
-
-path_map = '';
-filename = 'mapping_table.csv';
-
-table = readtable(strcat(path_map, filename));
 
 Asset_Macro = string(table{:, 2});
 
