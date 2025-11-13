@@ -224,7 +224,7 @@ stdRisk = std(RiskPtfSim, 0, 2);
 stdRet  = std(RetPtfSim,  0, 2);
 
 % === Robust MVP (sulla frontiera robusta) ===
-[~, idx_MVP_RF] = min(meanRisk);
+[, idx_MVP_RF] = min(meanRisk);
 ret_MVP_RF = meanRet(idx_MVP_RF);
 w_MVP_RF   = meanWeights(:, idx_MVP_RF);
 
