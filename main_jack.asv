@@ -2,7 +2,7 @@ clear
 close all
 clc
 rng(42)
-addpath('plots & prints')
+addpath('plots')
 
 %% Data
 
@@ -84,14 +84,13 @@ b2 = 0.45;
 
 A_ineq = [A1; A2; A_max];
 b_ineq = [b1; b2; b_max];
-options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
-
+  
 WeightsFrontier = zeros(16,length(ret_range));
 for i = 1:length(ret_range)
     r = ret_range(i);
     Aeq = [ones(1,NumAssets); ExpRet]; % added constraints: sum weights =1, target return
     beq = [1; r];
-w_opt = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub,[], options); % fmincon is a nonlinear programming solver.
+    w_opt = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub); % fmincon is a nonlinear programming solver.
     FrontierVola(i) = sqrt(w_opt'*V*w_opt);
     FrontierRet(i)  = w_opt'*ExpRet';
     WeightsFrontier(:,i) = w_opt;
@@ -217,7 +216,5 @@ ret_MSRP_RF = meanRet(idx_MSRP_RF);
 Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)')
 
 Plot_Robust_Frontier(meanRisk, meanRet, NumAssets, V, ExpRet, w_MVP_RF, w_MSRP_RF, rf)
-Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
-                              w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf)
 
 %% 
