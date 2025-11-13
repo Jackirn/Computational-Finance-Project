@@ -3,9 +3,10 @@ close all
 clc
 rng(42)
 addpath('plots & prints')
+addpath('utils')
 
 %% Data
-
+    
 baseDir = fileparts(mfilename('fullpath')); 
 csv     = fullfile(baseDir, 'csv');         
 addpath(csv, '');                           
@@ -85,25 +86,43 @@ FrontierRet  = zeros(1,length(ret_range));
 A_max = eye(NumAssets); % constraint: maximum exposition of every asset set to 0.3.
 b_max = 0.3*ones(NumAssets,1);
 
-A1 = [0, 0, 0, 0, 0, -1, -1, 0, 0, 0, -1, -1, -1, 0, 0, 0]; % constraint: group Neutral exposition >= 20%
-b1 = -0.20;
+% Leggi la classificazione dal mapping table
+defensive_assets = contains(table.MacroGroup, 'Defensive');
+neutral_assets = contains(table.MacroGroup, 'Neutral'); 
+cyclical_assets = contains(table.MacroGroup, 'Cyclical');
 
-A2 = [0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]; % constraint: group Defensive exposition <= 45%
-b2 = 0.45;
+% Neutral >= 20%: sum(w_neutral) >= 0.20
+A_neutral = -neutral_assets';  % -sum(w_neutral) <= -0.20
+b_neutral = -0.20;
 
-A_ineq = [A1; A2; A_max];
-b_ineq = [b1; b2; b_max];
+% Defensive <= 45%: sum(w_defensive) <= 0.45  
+A_defensive = defensive_assets';
+b_defensive = 0.45;
+
+A_ineq = [A_neutral; A_defensive; A_max];
+b_ineq = [b_neutral; b_defensive; b_max];
+
 options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
 
 WeightsFrontier = zeros(16,length(ret_range));
+feasible_points = true(1, length(ret_range));
+
 for i = 1:length(ret_range)
     r = ret_range(i);
     Aeq = [ones(1,NumAssets); ExpRet]; % added constraints: sum weights =1, target return
     beq = [1; r];
-w_opt = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub,[], options); % fmincon is a nonlinear programming solver.
-    FrontierVola(i) = sqrt(w_opt'*V*w_opt);
-    FrontierRet(i)  = w_opt'*ExpRet';
-    WeightsFrontier(:,i) = w_opt;
+
+    [w_opt, ~, exitflag] = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub,[], options); 
+
+    if exitflag > 0  % Soluzione trovata
+        FrontierVola(i) = sqrt(w_opt'*V*w_opt);
+        FrontierRet(i)  = w_opt'*ExpRet';
+        WeightsFrontier(:,i) = w_opt;
+    else  % Punto infattibile
+        feasible_points(i) = false;
+        FrontierVola(i) = NaN;
+        FrontierRet(i) = NaN;
+    end
 end
 
 fun = @(w) w'*V*w;
@@ -138,16 +157,15 @@ ret_MSRP = FrontierRet(idx_MSRP);
 
 Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)')
 
-
 % Plot
 Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 
 %% Point 1.b) Robust Frontier - Resampling Approach
 
 % Parameters for resampling
-M = 200;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
+M = 500;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
 T = size(logret, 1);  % number of daily observations in-sample
-nPort = 50;  % number of points on frontier
+nPort = 150;  % number of points on frontier
 
 % Estimate initial parameters from DAILY data
 e0_daily = mean(logret)';      % Daily expected returns (column vector)
@@ -157,76 +175,110 @@ RiskPtfSim = zeros(nPort, M);
 RetPtfSim = zeros(nPort, M);
 WeightsSim = zeros(NumAssets, nPort, M);
 
-Ret_range = linspace(min(ret_range), max(ret_range), nPort);
+min_ret = min(ExpRet);
+max_ret = max(ExpRet);
+Ret_range = linspace(min_ret * 0.9, max_ret * 1.1, nPort);
 
 % Optimization setup (same constraints as point a)
-options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
-
+options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp', ...
+                      'MaxFunctionEvaluations', 10000, 'MaxIterations', 1000);
 fprintf('Total simulations: %d\n', M);
 fprintf('Points per frontier: %d\n', nPort);
 fprintf('Total optimizations: %d\n\n', M * nPort);
 
+valid_simulations = 0;
 % Main resampling loop
 for m = 1:M 
+    if mod(m, 50) == 0
+        fprintf('Completed %d/%d simulations...\n', m, M);
+    end
     % Generate sample of T daily observations
     % Simulate T days of returns for all assets from multivariate normal
-    R_sim_daily = mvnrnd(e0_daily, V0_daily, T);  % T x NumAssets matrix
-    
+    Cov_sim_daily = iwishrnd(V0_daily, NumAssets + 20);        % +10 per stabilità
+    e_sim_daily = mvnrnd(e0_daily, Cov_sim_daily/NumAssets)';  % Rendimenti con incertezza
+
     % Estimate parameters for this sample
-    e_i_daily = mean(R_sim_daily, 1)';  % Daily expected returns (column vector)
-    V_i_daily = cov(R_sim_daily);       % Daily covariance matrix
+    e_i = e_sim_daily * 252;             % Annualized returns
+    V_i = Cov_sim_daily * 252;           % Annualized covariance
     
-    % Annualize the estimated parameters (same scale as point a)
-    e_i = e_i_daily * 252;              % Annualized returns
-    V_i = V_i_daily * 252;              % Annualized covariance
+    % Create portfolio with simulated moments
+    frontier_valid = true;
     
-    % Calculate efficient frontier for this simulated sample
     for j = 1:nPort
         targetRet = Ret_range(j);
         
-        % Define constraints (same as point a)
+        % Define constraints (stessi del punto 1.a)
         Aeq_temp = [ones(1, NumAssets); e_i'];
         b_eq_temp = [1; targetRet];
         
         fun_temp = @(x) x' * V_i * x;
         
-        % Optimization with same constraints as point (a)
-        w_opt = fmincon(fun_temp, x0, A_ineq, b_ineq, Aeq_temp, b_eq_temp, ...
-                       lb, ub, [], options);
+        [w_opt, ~, exitflag] = fmincon(fun_temp, x0, A_ineq, b_ineq, Aeq_temp, b_eq_temp, ...
+                                      lb, ub, [], options);
         
-        WeightsSim(:, j, m) = w_opt;
-        RiskPtfSim(j, m) = sqrt(w_opt' * V_i * w_opt);
-        RetPtfSim(j, m) = w_opt' * e_i;
+        if exitflag > 0
+            WeightsSim(:, j, m) = w_opt;
+            RiskPtfSim(j, m) = sqrt(w_opt' * V_i * w_opt);
+            RetPtfSim(j, m) = w_opt' * e_i;
+        else
+            frontier_valid = false;
+            break;
+        end
+    end
+
+    if frontier_valid
+        valid_simulations = valid_simulations + 1;
+    else
+        WeightsSim(:, :, m) = NaN;
+        RiskPtfSim(:, m) = NaN;
+        RetPtfSim(:, m) = NaN;
     end
 end
 
+valid_mask = ~isnan(squeeze(WeightsSim(1, 1, :)));
+WeightsSim_valid = WeightsSim(:, :, valid_mask);
+RiskPtfSim_valid = RiskPtfSim(:, valid_mask);
+RetPtfSim_valid = RetPtfSim(:, valid_mask);
+
 % Calculate final robust frontier as AVERAGE of all frontiers
-meanWeights = mean(WeightsSim, 3);   
-meanRet  = meanWeights' * ExpRet';                          
-meanRisk = sqrt(diag(meanWeights' * V * meanWeights));
+meanWeights = mean(WeightsSim, 3, 'omitnan');
 
-% Calculate standard deviations to assess stability
-stdRisk = std(RiskPtfSim, 0, 2);
-stdRet = std(RetPtfSim, 0, 2);
+% Initialize vol and ret
+RobustRisk = zeros(nPort, 1);
+RobustRet = zeros(nPort, 1);
 
-% RMVP
-[vol_MVP_RF, idx_MVP_RF] = min(meanRisk);
-ret_MVP_RF = meanRet(idx_MVP_RF);
+for j = 1:nPort
+    RobustRisk(j) = sqrt(meanWeights(:, j)' * V * meanWeights(:, j));
+    RobustRet(j) = meanWeights(:, j)' * ExpRet';
+end
+
+% Take just valid points
+valid_points = ~isnan(RobustRisk) & ~isnan(RobustRet);
+RobustRisk = RobustRisk(valid_points);
+RobustRet = RobustRet(valid_points);
+meanWeights = meanWeights(:, valid_points);
+
+% RMVP 
+[vol_MVP_RF, idx_MVP_RF] = min(RobustRisk);
+ret_MVP_RF = RobustRet(idx_MVP_RF);
 w_MVP_RF = meanWeights(:, idx_MVP_RF);
 
 Print_Ptfs(ret_MVP_RF, vol_MVP_RF, w_MVP_RF, 'C (Robust MVP)')
 
 % RMSRP
-SharpeRatios_RF = (meanRet - rf) ./ meanRisk;
-[maxSharpe_RF, idx_MSRP_RF] = max(SharpeRatios_RF);
+SharpeRatios_RF = (RobustRet - rf) ./ RobustRisk;
+[~, idx_MSRP_RF] = max(SharpeRatios_RF);
 w_MSRP_RF = meanWeights(:, idx_MSRP_RF);
-vol_MSRP_RF = meanRisk(idx_MSRP_RF);
-ret_MSRP_RF = meanRet(idx_MSRP_RF);
+vol_MSRP_RF = RobustRisk(idx_MSRP_RF);
+ret_MSRP_RF = RobustRet(idx_MSRP_RF);
+
+%check_constraints(w_MVP_RF, table, 'Portfolio C (Robust MVP)');
+%check_constraints(w_MSRP_RF, table, 'Portfolio D (Robust MSRP)');
 
 Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)')
 
-Plot_Robust_Frontier(meanRisk, meanRet, NumAssets, V, ExpRet, w_MVP_RF, w_MSRP_RF, rf)
-Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
+Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, w_MVP_RF, w_MSRP_RF, rf)
+Plot_Both_Frontiers(FrontierVola, FrontierRet, RobustRisk, RobustRet, ...
                               w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf)
 
 %% Point 2.a) BLM equilibrium returns

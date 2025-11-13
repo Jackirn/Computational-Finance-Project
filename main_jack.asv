@@ -85,14 +85,22 @@ FrontierRet  = zeros(1,length(ret_range));
 A_max = eye(NumAssets); % constraint: maximum exposition of every asset set to 0.3.
 b_max = 0.3*ones(NumAssets,1);
 
-A1 = [0, 0, 0, 0, 0, -1, -1, 0, 0, 0, -1, -1, -1, 0, 0, 0]; % constraint: group Neutral exposition >= 20%
-b1 = -0.20;
+% Leggi la classificazione dal mapping table
+defensive_assets = contains(table.Group, 'Defensive');
+neutral_assets = contains(table.Group, 'Neutral'); 
+cyclical_assets = contains(table.Group, 'Cyclical');
 
-A2 = [0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]; % constraint: group Defensive exposition <= 45%
-b2 = 0.45;
+% Neutral >= 20%: sum(w_neutral) >= 0.20
+A_neutral = -neutral_assets';  % -sum(w_neutral) <= -0.20
+b_neutral = -0.20;
 
-A_ineq = [A1; A2; A_max];
-b_ineq = [b1; b2; b_max];
+% Defensive <= 45%: sum(w_defensive) <= 0.45  
+A_defensive = defensive_assets';
+b_defensive = 0.45;
+
+A_ineq = [A_neutral; A_defensive; A_max];
+b_ineq = [b_neutral; b_defensive; b_max];
+
 options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
 
 WeightsFrontier = zeros(16,length(ret_range));
@@ -100,10 +108,17 @@ for i = 1:length(ret_range)
     r = ret_range(i);
     Aeq = [ones(1,NumAssets); ExpRet]; % added constraints: sum weights =1, target return
     beq = [1; r];
-w_opt = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub,[], options); % fmincon is a nonlinear programming solver.
-    FrontierVola(i) = sqrt(w_opt'*V*w_opt);
-    FrontierRet(i)  = w_opt'*ExpRet';
-    WeightsFrontier(:,i) = w_opt;
+
+    [w_opt, ~, exitflag] = fmincon(fun, x0, A_ineq, b_ineq, Aeq, beq, lb, ub,[], options); % fmincon is a nonlinear programming solver.
+    if exitflag > 0  % Soluzione trovata
+        FrontierVola(i) = sqrt(w_opt'*V*w_opt);
+        FrontierRet(i)  = w_opt'*ExpRet';
+        WeightsFrontier(:,i) = w_opt;
+    else  % Punto infattibile
+        feasible_points(i) = false;
+        FrontierVola(i) = NaN;
+        FrontierRet(i) = NaN;
+    end
 end
 
 fun = @(w) w'*V*w;
@@ -145,9 +160,9 @@ Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 %% Point 1.b) Robust Frontier - Resampling Approach
 
 % Parameters for resampling
-M = 200;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
+M = 100;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
 T = size(logret, 1);  % number of daily observations in-sample
-nPort = 50;  % number of points on frontier
+nPort = 100;  % number of points on frontier
 
 % Estimate initial parameters from DAILY data
 e0_daily = mean(logret)';      % Daily expected returns (column vector)
@@ -170,15 +185,17 @@ fprintf('Total optimizations: %d\n\n', M * nPort);
 for m = 1:M 
     % Generate sample of T daily observations
     % Simulate T days of returns for all assets from multivariate normal
-    R_sim_daily = mvnrnd(e0_daily, V0_daily, T);  % T x NumAssets matrix
-    
+    %R_sim_daily = mvnrnd(e0_daily, V0_daily, T);  % T x NumAssets matrix
+    Cov_sim_daily = iwishrnd(V0_daily, NumAssets + 10);  % +10 per stabilità
+    e_sim_daily = mvnrnd(e0_daily, Cov_sim_daily/NumAssets)';  % Rendimenti con incertezza
+
     % Estimate parameters for this sample
-    e_i_daily = mean(R_sim_daily, 1)';  % Daily expected returns (column vector)
-    V_i_daily = cov(R_sim_daily);       % Daily covariance matrix
-    
+    %e_i_daily = mean(R_sim_daily, 1)';  % Daily expected returns (column vector)
+    %V_i_daily = cov(R_sim_daily);       % Daily covariance matrix
+    %V_i_daily = iwishrnd(V0_daily, NumAssets);  % Daily covariance matrix
     % Annualize the estimated parameters (same scale as point a)
-    e_i = e_i_daily * 252;              % Annualized returns
-    V_i = V_i_daily * 252;              % Annualized covariance
+    e_i = e_sim_daily * 252;              % Annualized returns
+    V_i = Cov_sim_daily * 252;              % Annualized covariance
     
     % Calculate efficient frontier for this simulated sample
     for j = 1:nPort
@@ -201,12 +218,9 @@ for m = 1:M
 end
 
 % Calculate final robust frontier as AVERAGE of all frontiers
-meanRisk = mean(RiskPtfSim, 2);    % Average volatility across simulations
-meanRet = mean(RetPtfSim, 2);      % Average return across simulations
-meanWeights = mean(WeightsSim, 3); % Average weights across simulations
-
-meanRisk = sqrt(meanWeights' * V * meanWeights);
-meanRet = meanWeights' * ExpRet';
+meanWeights = mean(WeightsSim, 3);   
+meanRet  = meanWeights' * ExpRet';                          
+meanRisk = sqrt(diag(meanWeights' * V * meanWeights));
 
 % Calculate standard deviations to assess stability
 stdRisk = std(RiskPtfSim, 0, 2);

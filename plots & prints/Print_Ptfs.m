@@ -1,7 +1,7 @@
 function Print_Ptfs(ret,vol,w,name)
 %PRINT_PTFS Summary of this function goes here
 %   Detailed explanation goes here
-    fprintf('Portfolio %s:\n', name);
+    fprintf('\nPortfolio %s:\n', name);
     fprintf('  Expected Return: %.2f%%\n', ret * 100);
     fprintf('  Volatility:      %.2f%%\n', vol * 100);
     fprintf('  Top 3 holdings:\n');
