@@ -201,9 +201,9 @@ for m = 1:M
 end
 
 % Calculate final robust frontier as AVERAGE of all frontiers
-meanRisk = mean(RiskPtfSim, 2);    % Average volatility across simulations
-meanRet = mean(RetPtfSim, 2);      % Average return across simulations
-meanWeights = mean(WeightsSim, 3); % Average weights across simulations
+meanWeights = mean(WeightsSim, 3);   
+meanRet  = meanWeights' * ExpRet';                          
+meanRisk = sqrt(diag(meanWeights' * V * meanWeights));
 
 % Calculate standard deviations to assess stability
 stdRisk = std(RiskPtfSim, 0, 2);

@@ -4,28 +4,30 @@ clc
 rng(42)
 addpath('plots & prints')
 
+%% Data
 
-
-% Asset Prices
 baseDir = fileparts(mfilename('fullpath')); 
 csv     = fullfile(baseDir, 'csv');         
 addpath(csv, '');                           
 path_map = [csv filesep];
+
+% Asset Prices
 filename = 'asset_prices.csv';
-
 table_prices = readtable(strcat(path_map, filename));
-
-% Capitalization weights
-path_map2 = [csv filesep];
-filename2 = 'capitalization_weights.csv';
-
-table_capw2 = readtable(strcat(path_map2,filename2));
 
 dt = table_prices(:,1).Variables;
 values = table_prices(:,2:end).Variables;
 nm = table_prices.Properties.VariableNames(2:end);
 
 myPrice_dt = array2timetable(values, 'RowTimes', dt, 'VariableNames', nm);
+
+% Capitalization weights
+filename2 = 'capitalization_weights.csv';
+table_capw2 = readtable(strcat(path_map,filename2));
+
+% Mapping Table
+filename = 'mapping_table.csv';
+table = readtable(strcat(path_map, filename));
 
 %% Selection of a subset of Dates (In-Sample Dataset)
 
@@ -203,6 +205,9 @@ meanRisk = mean(RiskPtfSim, 2);    % Average volatility across simulations
 meanRet = mean(RetPtfSim, 2);      % Average return across simulations
 meanWeights = mean(WeightsSim, 3); % Average weights across simulations
 
+meanRisk = sqrt(meanWeights' * V * meanWeights);
+meanRet = meanWeights' * ExpRet';
+
 % Calculate standard deviations to assess stability
 stdRisk = std(RiskPtfSim, 0, 2);
 stdRet = std(RetPtfSim, 0, 2);
@@ -245,20 +250,15 @@ mu_MKT = lambda * V * w_MKT;               % Implied Equilibrium Return Vector.
 
 %C = tau * V;
 
-%% Building Our Views
+%% Point 2.b) Building Our Views
 
 v = 3; % number of views.
 
-tau = 1/length(LogRet); % 1/N_obs.
+tau = 1/length(logret); % 1/N_obs.
 
 P = zeros(v, NumAssets);  
 q = zeros(v, 1);          % expected returns from views
 Omega = zeros(v);         % uncertainty of views
-
-path_map = '';
-filename = 'mapping_table.csv';
-
-table = readtable(strcat(path_map, filename));
 
 Asset_Macro = string(table{:, 2});
 
