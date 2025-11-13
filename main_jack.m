@@ -6,6 +6,7 @@ addpath('plots & prints')
 
 %% Data
 
+% Asset Prices
 baseDir = fileparts(mfilename('fullpath')); 
 csv     = fullfile(baseDir, 'csv');         
 addpath(csv, '');                           
@@ -13,6 +14,12 @@ path_map = [csv filesep];
 filename = 'asset_prices.csv';
 
 table_prices = readtable(strcat(path_map, filename));
+
+% Capitalization weights
+path_map2 = [csv filesep];
+filename2 = 'capitalization_weights.csv';
+
+table_capw2 = readtable(strcat(path_map2,filename2));
 
 dt = table_prices(:,1).Variables;
 values = table_prices(:,2:end).Variables;
@@ -62,7 +69,7 @@ figure;
 scatter(VolaPtfs, RetPtfs, [], SharpePtfs, 'filled');
 hold on;
 
-%% Point a) Compute the Efficient Frontier
+%% Point 1.a) Compute the Efficient Frontier
 
 fun = @(x) x'*V*x;                     % objective = variance
 ret_range = linspace(min(RetPtfs), max(RetPtfs),100);
@@ -133,7 +140,7 @@ Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)')
 % Plot
 Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 
-%% Point b) Robust Frontier - Resampling Approach
+%% Point 1.b) Robust Frontier - Resampling Approach
 
 % Parameters for resampling
 M = 200;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
@@ -220,4 +227,67 @@ Plot_Robust_Frontier(meanRisk, meanRet, NumAssets, V, ExpRet, w_MVP_RF, w_MSRP_R
 Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
                               w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf)
 
-%% 
+%% Point 2.a) BLM equilibrium returns
+
+cap_weights = table_capw2(:,3).Variables;
+
+w_MKT = cap_weights(1:NumAssets)./ sum(cap_weights(1:NumAssets)); % market weights.
+
+rf = 0;
+
+ExpRet_MKT = w_MKT'*ExpRet';
+
+sigma2_MKT = w_MKT'*V*w_MKT;
+
+lambda = (ExpRet_MKT - rf)/sigma2_MKT;     % common approach for computing lambda.
+
+mu_MKT = lambda * V * w_MKT;               % Implied Equilibrium Return Vector.
+
+%C = tau * V;
+
+%% Point 2.b) Building Our Views
+
+v = 3; % number of views.
+
+tau = 1/length(logret); % 1/N_obs.
+
+P = zeros(v, NumAssets);  
+q = zeros(v, 1);          % expected returns from views
+Omega = zeros(v);         % uncertainty of views
+
+path_map = '';
+filename = 'mapping_table.csv';
+
+table = readtable(strcat(path_map, filename));
+
+Asset_Macro = string(table{:, 2});
+
+% View 1: we expect Cyclical assets to outperform Neutral ones by 2%
+% annualized
+
+c = sum(strcmp(Asset_Macro,'Cyclical'));
+P(1, Asset_Macro == 'Cyclical') = 1/c;
+n = sum(strcmp(Asset_Macro,'Neutral'));
+P(1, Asset_Macro == 'Neutral') = -1/n;
+q(1) = 0.02;
+
+% View 2: we expect Asset_10 to underperform average Defensive group by
+% -0.7% annualized
+
+P(2,10) = -1;
+d = sum(strcmp(Asset_Macro,'Defensive'));
+P(2,Asset_Macro == 'Defensive') = 1/d;
+q(2) = 0.007;
+
+% View 3: we expect Asset_2 to outperform Asset_13 by 1% annualized
+
+P(3,2) = 1;
+P(3,13) = -1;
+q(3) = 0.01;
+
+% compute Omega, assuming that views are independent --> reason why Omega
+% is diagonal.
+
+for i = 1:v
+    Omega(i,i) = tau * P(i,:) * V * P(i,:)';
+end
