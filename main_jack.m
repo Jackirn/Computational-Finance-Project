@@ -283,60 +283,141 @@ Plot_Both_Frontiers(FrontierVola, FrontierRet, RobustRisk, RobustRet, ...
 
 %% Point 2.a) BLM equilibrium returns
 
-cap_weights = table_capw2(:,3).Variables;
+cap_weights = table_capw2{:, 3};
+w_MKT = cap_weights(1:NumAssets) ./ sum(cap_weights(1:NumAssets)); % market weights
 
-w_MKT = cap_weights(1:NumAssets)./ sum(cap_weights(1:NumAssets)); % market weights.
+% Calculate market portfolio statistics
+ExpRet_MKT = w_MKT' * ExpRet'; % Expected return of market portfolio
+sigma2_MKT = w_MKT' * V * w_MKT; % Variance of market portfolio
 
-rf = 0;
+lambda = (ExpRet_MKT - rf) / sigma2_MKT; % Common approach for computing lambda
 
-ExpRet_MKT = w_MKT'*ExpRet';
+mu_MKT = lambda * V * w_MKT; % Implied Equilibrium Return Vector
 
-sigma2_MKT = w_MKT'*V*w_MKT;
-
-lambda = (ExpRet_MKT - rf)/sigma2_MKT;     % common approach for computing lambda.
-
-mu_MKT = lambda * V * w_MKT;               % Implied Equilibrium Return Vector.
-
-%C = tau * V;
+%fprintf('\nEquilibrium Returns:\n');
+%for i = 1:length(mu_MKT)
+%    fprintf('  %s: %.4f\n', nm{i}, mu_MKT(i));
+%end
 
 %% Point 2.b) Building Our Views
 
 v = 3; % number of views.
-
 tau = 1/length(logret); % 1/N_obs.
 
 P = zeros(v, NumAssets);  
 q = zeros(v, 1);          % expected returns from views
 Omega = zeros(v);         % uncertainty of views
 
-Asset_Macro = string(table{:, 2});
+Asset_Macro = string(table.MacroGroup);
 
-% View 1: we expect Cyclical assets to outperform Neutral ones by 2%
-% annualized
+% View 1: we expect Cyclical assets to outperform Neutral ones by 2% annualized
+cyclical_mask = strcmp(Asset_Macro, 'Cyclical');
+neutral_mask = strcmp(Asset_Macro, 'Neutral');
 
-c = sum(strcmp(Asset_Macro,'Cyclical'));
-P(1, Asset_Macro == 'Cyclical') = 1/c;
-n = sum(strcmp(Asset_Macro,'Neutral'));
-P(1, Asset_Macro == 'Neutral') = -1/n;
+c = sum(cyclical_mask);
+n = sum(neutral_mask);
+
+P(1, cyclical_mask) = 1/c;
+P(1, neutral_mask) = -1/n;
 q(1) = 0.02;
 
-% View 2: we expect Asset_10 to underperform average Defensive group by
-% -0.7% annualized
+% View 2: we expect Asset_10 to underperform average Defensive group by -0.7% annualized
+defensive_mask = strcmp(Asset_Macro, 'Defensive');
 
-P(2,10) = -1;
-d = sum(strcmp(Asset_Macro,'Defensive'));
-P(2,Asset_Macro == 'Defensive') = 1/d;
-q(2) = 0.007;
+d = sum(defensive_mask);
+
+P(2, 10) = 1;  % Asset_10
+P(2, defensive_mask) = P(2, defensive_mask) - 1/d;
+q(2) = -0.007; % underperformance
 
 % View 3: we expect Asset_2 to outperform Asset_13 by 1% annualized
-
-P(3,2) = 1;
-P(3,13) = -1;
+P(3, 2) = 1;   % Asset_2
+P(3, 13) = -1; % Asset_13  
 q(3) = 0.01;
 
-% compute Omega, assuming that views are independent --> reason why Omega
-% is diagonal.
+% compute Omega, assuming that views are independent --> reason why Omega% is diagonal.
 
 for i = 1:v
     Omega(i,i) = tau * P(i,:) * V * P(i,:)';
 end
+
+fprintf('\nBlack-Litterman Views Verification:\n');
+fprintf('View 1: Cyclical > Neutral by %.1f%%\n', q(1)*100);
+fprintf('View 2: Asset_10 < Defensive avg by %.1f%%\n', abs(q(2))*100);
+fprintf('View 3: Asset_2 > Asset_13 by %.1f%%\n', q(3)*100);
+
+%% Point 2.c) Calculate Posterior Expected Returns
+
+C = tau * V;
+A = (C\eye(NumAssets) + P'/Omega*P);
+b = (P'/Omega*q + C\mu_MKT);
+mu_BL = A \ b;
+
+% Post covariance
+covBL = inv(P'/Omega*P + inv(C));
+
+%term1 = tau * V * P';
+%term2 = P * tau * V * P' + Omega;
+%mu_BL = mu_MKT + term1 / term2 * (q - P * mu_MKT);
+
+fprintf('\nBlack-Litterman Posterior Returns - Top Changes:\n');
+fprintf('Asset\t\tPrior\t\tPosterior\tChange\t\t%% Change\n');
+changes = mu_BL - mu_MKT;
+[~, sorted_idx] = sort(abs(changes), 'descend');
+
+for i = 1:min(8, NumAssets)
+    idx = sorted_idx(i);
+    pct_change = (mu_BL(idx) - mu_MKT(idx)) / abs(mu_MKT(idx)) * 100;
+    fprintf('%s\t\t%.4f\t\t%.4f\t\t%+.4f\t\t%+.1f%%\n', ...
+            nm{idx}, mu_MKT(idx), mu_BL(idx), changes(idx), pct_change);
+end
+
+view_impact = norm(mu_BL - mu_MKT);
+fprintf('\nTotal impact from views: %.6f (%.2f%% of average prior return)\n', ...
+        view_impact, view_impact/mean(abs(mu_MKT))*100);
+
+%% Point 2.d) Compute Efficient Frontier with Posterior Returns
+
+% Std constraints
+Aeq_BL = ones(1, NumAssets);
+beq_BL = 1;
+lb_BL = zeros(NumAssets, 1);
+ub_BL = ones(NumAssets, 1); % no more 30% on single asset
+
+% Frontier with BL parameters
+ret_range_BL = linspace(min(mu_BL), max(mu_BL), 100);
+FrontierVola_BL = zeros(1, length(ret_range_BL));
+FrontierRet_BL = zeros(1, length(ret_range_BL));
+WeightsFrontier_BL = zeros(NumAssets, length(ret_range_BL));
+
+for i = 1:length(ret_range_BL)
+    r = ret_range_BL(i);
+    Aeq_temp = [ones(1, NumAssets); mu_BL'];
+    beq_temp = [1; r];
+    
+    [w_opt, ~, exitflag] = fmincon(fun, x0, [], [], Aeq_temp, beq_temp, lb_BL, ub_BL, [], options);
+    
+    if exitflag > 0
+        FrontierVola_BL(i) = sqrt(w_opt' * V * w_opt);
+        FrontierRet_BL(i) = w_opt' * mu_BL;
+        WeightsFrontier_BL(:, i) = w_opt;
+    else
+        FrontierVola_BL(i) = NaN;
+        FrontierRet_BL(i) = NaN;
+    end
+end
+
+% Portfolio E: MV
+[vol_MVP_BL, idx_MVP_BL] = min(FrontierVola_BL);
+ret_MVP_BL = FrontierRet_BL(idx_MVP_BL);
+w_MVP_BL = WeightsFrontier_BL(:, idx_MVP_BL);
+
+% Portfolio F: MSR
+SharpeFrontier_BL = (FrontierRet_BL - rf) ./ FrontierVola_BL;
+[~, idx_MSRP_BL] = max(SharpeFrontier_BL);
+w_MSRP_BL = WeightsFrontier_BL(:, idx_MSRP_BL);
+vol_MSRP_BL = FrontierVola_BL(idx_MSRP_BL);
+ret_MSRP_BL = FrontierRet_BL(idx_MSRP_BL);
+
+Print_Ptfs(ret_MVP_BL, vol_MVP_BL, w_MVP_BL, 'E (BL MVP)')
+Print_Ptfs(ret_MSRP_BL, vol_MSRP_BL, w_MSRP_BL, 'F (BL MSRP)')
