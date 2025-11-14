@@ -194,7 +194,7 @@ for m = 1:M
     end
     % Generate sample of T daily observations
     % Simulate T days of returns for all assets from multivariate normal
-    Cov_sim_daily = iwishrnd(V0_daily, NumAssets + 20);        % +10 per stabilità
+    Cov_sim_daily = iwishrnd(V0_daily, NumAssets + 20);        % +20 per stabilità
     e_sim_daily = mvnrnd(e0_daily, Cov_sim_daily/NumAssets)';  % Rendimenti con incertezza
 
     % Estimate parameters for this sample
