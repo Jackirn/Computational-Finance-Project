@@ -535,7 +535,7 @@ SR_ME = (w_opt_ME*ExpRet')/Vol_ME;
 % Herfindahl Index
 
 HI_eq = sum(w_eq.^2);
-HI_MDR = sum(w_opt_MDR.^2);
-HI_ME = sum(w_opt_ME.^2);
+HI_eq = sum(w_eq.^2);
+HI_eq = sum(w_eq.^2);
 
 
