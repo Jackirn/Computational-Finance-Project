@@ -435,8 +435,6 @@ beq = 1; % sum of w(i) equal to 1
 lb = zeros(NumAssets,1); % w(i) >= 0
 ub = 0.25*ones(NumAssets,1); % w(i) <= 0.25
 w0 = ones(NumAssets,1)/NumAssets; % initial guess: equally weighted ptf
-nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
-
 
 % Cyclical >= 20%: sum(w_cyclical) >= 0.20
 A_cyclical = -cyclical_assets';
@@ -452,6 +450,8 @@ bineq = [b_cyclical; b_defensive];
 for i = 1:length(target_Vol)
 
     sigma_tar = target_Vol(i);
+    nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
+    
     [w_opt, fval, exitflag] = fmincon(fun, w0, Aineq, bineq, Aeq, beq, lb, ub, nonlcon);
 
     if exitflag > 0 % soluzione trovata
@@ -485,6 +485,7 @@ weights_ENT_frontier = zeros(NumAssets, length(targetVol));
 for k = 1:length(target_Vol)
 
     sigma_tar = target_Vol(i);
+    nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
 
     [w_opt, fval, exitflag] = fmincon(fun2, x0, Aineq,bineq,Aeq, beq, lb, ub, nonlcon);
 
