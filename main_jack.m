@@ -509,7 +509,7 @@ hold off;
 %% Compare this ptfs with the equally weighted benchmark in terms of: 
 %   DR, Vol, Sharpe Ratio, Herfindahl index
 
-w_eq     = (1/NumAssets)*ones(NumAssets,1);  % equally weighted (colonna)ß
+w_eq = (1/NumAssets)*ones(NumAssets,1);  % equally weighted (colonna)ß
 
 % Diversification Ratio
 
@@ -554,3 +554,56 @@ ComparisonTable = array2table(MetricsMatrix, ...
 
 disp('=== Comparison of Portfolios: EW vs. MDR (G) vs. ME (H) ===')
 disp(ComparisonTable)
+
+%%
+muR    = mean(logret);       % 1 x N
+sigmaR = std(logret);        % 1 x N
+
+% Standardize returns
+RetStd = (logret - muR) ./ sigmaR;   % T x N
+
+k = 5;  % number of principal components
+
+[Loadings, Scores, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+covarFactor = cov(Scores);           % k x k
+
+% Reconstructed standardized returns and residuals
+RetStd_hat   = Scores * Loadings';   % T x N
+epsilon_std  = RetStd - RetStd_hat;  % T x N
+Psi_std      = var(epsilon_std,0,1); % 1 x N
+
+Lambda  = diag(sigmaR);
+D       = diag(Psi_std);
+
+CovarPCA = Lambda * (Loadings * covarFactor * Loadings' + D) * Lambda;
+
+% Reconstructed returns in original units
+reconReturn    = RetStd_hat .* sigmaR + muR;   % implicit expansion ok (R2016b+)
+unexplainedRetn = logret - reconReturn;
+
+% Explained variance by first k components
+ExplainedVar = latent(1:k) / sum(latent);
+
+figure;
+bar(ExplainedVar*100);
+title('Variance explained by each Principal Component');
+xlabel('Principal Component');
+ylabel('Explained Variance (%)');
+
+% Cumulative explained variance (all components)
+CumExplVar = cumsum(explained);   % "explained" è già in percentuale
+n_pc       = 1:length(explained);
+
+figure;
+plot(n_pc, CumExplVar, 'm', 'LineWidth', 2);
+hold on;
+scatter(n_pc, CumExplVar, 'm', 'filled');
+grid on;
+xlabel('Number of Principal Components');
+ylabel('Cumulative Explained Variance (%)');
+title('Cumulative Percentage of Explained Variance');
+
+
+%% Maximum Sharpe Ratio Optimization (PCA model)
+func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
+[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, [],[],Aeq,beq,lb,ub, [], options);
