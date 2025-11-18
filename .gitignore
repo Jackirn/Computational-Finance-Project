@@ -1,1 +1,20 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# MATLAB autosave files
 *.asv
+*.autosave
+
+# MATLAB backup files
+*.m~
+*.bak
+
+# Temporary / generated files
+*~
+*.tmp
+*.log
+
+# VSCode / editors
+.vscode/
