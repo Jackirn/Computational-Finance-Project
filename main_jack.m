@@ -472,15 +472,6 @@ xlabel('Portfolio Volatility')
 ylabel('Entropy in risk contributions')
 title('Entropy–Risk Frontier')
 grid on
-fig = gcf; 
-set(fig, 'Units', 'centimeters', 'Position', [2 2 16 12]); % Leggermente più alto
-
-if ~exist('Plots', 'dir')
-   mkdir('Plots');
-end
-
-exportgraphics(fig, 'Plots/div_entr.pdf', 'ContentType', 'vector');
-exportgraphics(fig, 'Plots/div_entr.png', 'Resolution', 300);
 
 % Combined Plot: DR frontier + Entropy frontier
 
@@ -513,15 +504,6 @@ legend({'Diversification Ratio Frontier',...
        'Location','best')
 
 hold off;
-fig = gcf; 
-set(fig, 'Units', 'centimeters', 'Position', [2 2 16 12]); % Leggermente più alto
-
-if ~exist('Plots', 'dir')
-   mkdir('Plots');
-end
-
-exportgraphics(fig, 'Plots/div_entropy_combined.pdf', 'ContentType', 'vector');
-exportgraphics(fig, 'Plots/div_entropy_combined.png', 'Resolution', 300);
 
 %% Compare this ptfs with the equally weighted benchmark in terms of: 
 %   DR, Vol, Sharpe Ratio, Herfindahl index
@@ -581,7 +563,17 @@ RetStd = (logret - muR) ./ sigmaR;   % T x N
 
 k = 5;  % number of principal components
 
-[Loadings, Scores, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+[Loadings_All, Scores_All, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+
+cumVar = cumsum(latent) / sum(latent);
+target_var = 0.85; % Soglia 85%
+k = find(cumVar >= target_var, 1, 'first');
+
+ExplainedVar = latent(1:k) / sum(latent);
+
+Loadings = Loadings_All(:, 1:k); 
+Scores   = Scores_All(:, 1:k);
+
 covarFactor = cov(Scores);           % k x k
 
 % Reconstructed standardized returns and residuals
@@ -594,12 +586,18 @@ D       = diag(Psi_std);
 
 CovarPCA = Lambda * (Loadings * covarFactor * Loadings' + D) * Lambda;
 
+v1 = Loadings(:, 1);
+
+A = v1';      % w' * v1 <= 0.5
+b = 0.5;
+
 % Reconstructed returns in original units
 reconReturn    = RetStd_hat .* sigmaR + muR;   % implicit expansion ok (R2016b+)
 unexplainedRetn = logret - reconReturn;
 
 % Explained variance by first k components
-ExplainedVar = latent(1:k) / sum(latent);
+
+fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', k, sum(ExplainedVar)*100);
 
 figure;
 bar(ExplainedVar*100);
@@ -620,7 +618,11 @@ xlabel('Number of Principal Components');
 ylabel('Cumulative Explained Variance (%)');
 title('Cumulative Percentage of Explained Variance');
 
-
 %% Maximum Sharpe Ratio Optimization (PCA model)
+
 func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
-[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, [],[],Aeq,beq,lb,ub, [], options);
+[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, A, b, Aeq, beq, lb, ub, [], options);
+disp('--- Risultati ---');
+disp(['Sharpe Ratio: ', num2str(-fval_sharpe)]);
+disp(['Volatilità (CovarPCA): ', num2str(sqrt(w_sharpe' * CovarPCA * w_sharpe))]);
+disp(['Esposizione v1: ', num2str(w_sharpe' * v1)]);

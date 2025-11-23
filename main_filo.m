@@ -618,13 +618,14 @@ alpha = 0.95 % 5% tail prob.
 % u_i = slack variables for losses beyond VaR (t x 1)
 % Objective: minimize [eta + 1/((1-alpha)*N)*sum(u_i)]
 
-t = size(logret,2) % number of scenarios.
+Sigma = cov(logret);
+t = size(logret,1) % number of scenarios.
 
 % Vector of the obj fun coefficients: [w(1:NumAssets), eta, u_i(1:t)]:
 coeff = [zeros(NumAssets,1); 1; (1/((1-alpha)*t))*ones(t,1)]; %initialized
 
 % Constraints:
-A1 = [-LogRet, -ones(t,1), -eye(t)];   % u_i >= -L_i(w) - eta
+A1 = [-logret, -ones(t,1), -eye(t)];   % u_i >= -L_i(w) - eta
 A2 = [zeros(t,NumAssets+1), -eye(t)];     % u_i >= 0
 A = [A1; A2];
 b = zeros(2*t,1);
@@ -636,8 +637,9 @@ beq = 1;
 % Bounds
 lb = [zeros(NumAssets,1); -Inf; zeros(t,1)]; % w(i) >= 0 for each i
 ub = [];
-
-x = linprog(f, A, b, Aeq, beq, lb, ub);
+fun = @(x) x(NumAssets+1) + (1/((1-alpha)*T)) * sum(x(NumAssets+2:end));
+[x_sol, fval] = fmincon(fun, x0, A, b, Aeq, beq, lb, ub, ...
+    @(x) nonlinConstr(x, Sigma, NumAssets), options);
 
 w_CVaR = x(1:NumAssets);
 eta = x(NumAssets+1);
