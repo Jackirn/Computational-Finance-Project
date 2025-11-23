@@ -234,17 +234,16 @@ ret_MSRP_RF = RobustRet(idx_MSRP_RF);
 
 Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)');
 
-% === 6) Plot frontiera robusta e confronto con frontiera "classica" =====
 % Plot solo robust
 Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, ...
                      w_MVP_RF, w_MSRP_RF, rf);
 
 % Plot entrambe
-Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
-                    RobustRisk, RobustRet, ...
-                    w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
-                    w_MVP_RF, w_MSRP_RF, ...  % robusti
-                    V, ExpRet, rf);
+%Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
+ %                   RobustRisk, RobustRet, ...
+ %                   w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
+ %                   w_MVP_RF, w_MSRP_RF, ...  % robusti
+ %                   V, ExpRet, rf);
 
 %% Point 2.a) BLM equilibrium returns
 
@@ -473,6 +472,15 @@ xlabel('Portfolio Volatility')
 ylabel('Entropy in risk contributions')
 title('Entropy–Risk Frontier')
 grid on
+fig = gcf; 
+set(fig, 'Units', 'centimeters', 'Position', [2 2 16 12]); % Leggermente più alto
+
+if ~exist('Plots', 'dir')
+   mkdir('Plots');
+end
+
+exportgraphics(fig, 'Plots/div_entr.pdf', 'ContentType', 'vector');
+exportgraphics(fig, 'Plots/div_entr.png', 'Resolution', 300);
 
 % Combined Plot: DR frontier + Entropy frontier
 
@@ -505,6 +513,15 @@ legend({'Diversification Ratio Frontier',...
        'Location','best')
 
 hold off;
+fig = gcf; 
+set(fig, 'Units', 'centimeters', 'Position', [2 2 16 12]); % Leggermente più alto
+
+if ~exist('Plots', 'dir')
+   mkdir('Plots');
+end
+
+exportgraphics(fig, 'Plots/div_entropy_combined.pdf', 'ContentType', 'vector');
+exportgraphics(fig, 'Plots/div_entropy_combined.png', 'Resolution', 300);
 
 %% Compare this ptfs with the equally weighted benchmark in terms of: 
 %   DR, Vol, Sharpe Ratio, Herfindahl index
@@ -555,7 +572,7 @@ ComparisonTable = array2table(MetricsMatrix, ...
 disp('=== Comparison of Portfolios: EW vs. MDR (G) vs. ME (H) ===')
 disp(ComparisonTable)
 
-%%
+%% 4a)
 muR    = mean(logret);       % 1 x N
 sigmaR = std(logret);        % 1 x N
 

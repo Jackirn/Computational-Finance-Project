@@ -40,13 +40,6 @@ function Plot_Robust_Frontier(meanRisk, meanRet, NumAssets, V, ExpRet, w_MVP_RF,
             'MarkerFaceColor', [0.93 0.69 0.13], 'MarkerEdgeColor', 'k', ...
             'LineWidth', 1.5, 'DisplayName', 'Portfolio D (Robust MSRP)');
 
-    % CAL (Capital Allocation Line) 
-    x_max = max(meanRisk) * 1.1;
-    x_line = [0, x_max];
-    y_CAL = rf + sharpe_RF * x_line;
-    plot(x_line, y_CAL, '--', 'Color', [0.85 0.33 0.10], ...
-         'LineWidth', 1.5, 'DisplayName', 'CAL (Robust)');
-
     xlabel('Volatility (σ)', 'FontSize', 12);
     ylabel('Expected Return (μ)', 'FontSize', 12);
     title('Robust Efficient Frontier and Key Portfolios', ...
