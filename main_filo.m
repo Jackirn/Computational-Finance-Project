@@ -1,4 +1,4 @@
-clear 
+clear all
 close all
 clc
 rng(42)
@@ -160,126 +160,91 @@ Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)')
 % Plot
 Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 
-%% Point 1.b) Robust Frontier - Resampling Approach
+%% 1.b Robust Frontier
 
-% Parameters for resampling
-M = 500;  % number of simulations (puoi aumentare a 500 per risultati più stabili)
-T = size(logret, 1);  % number of daily observations in-sample
-nPort = 150;  % number of points on frontier
+p = Portfolio('AssetList', nm);    
+p = setDefaultConstraints(p);      % weight sum = 1, w >= 0
 
-% Estimate initial parameters from DAILY data
-e0_daily = mean(logret)';      % Daily expected returns (column vector)
-V0_daily = cov(logret);        % Daily covariance matrix
+ub = 0.30*ones(p.NumAssets,1);          % max 30%
+p  = setBounds(p, p.LowerBound, ub);    % LowerBound already taken into 
+                                        % account by setDefaultConstraints
+isDef = strcmp(table.MacroGroup, 'Defensive'); 
+isNeu = strcmp(table.MacroGroup, 'Neutral');
 
-RiskPtfSim = zeros(nPort, M);
-RetPtfSim = zeros(nPort, M);
-WeightsSim = zeros(NumAssets, nPort, M);
+G = zeros(2, p.NumAssets);
+G(1, isDef) = 1;      % Defensive
+G(2, isNeu) = 1;      % Neutral
 
-min_ret = min(ExpRet);
-max_ret = max(ExpRet);
-Ret_range = linspace(min_ret * 0.9, max_ret * 1.1, nPort);
+LowerGroup = [0;    0.20];  % Defensive ≥0, Neutral ≥ 20%
+UpperGroup = [0.45; 1.00];  % Defensive ≤ 45%, Neutral ≤ 100%
+                           
+p = setGroups(p, G, LowerGroup, UpperGroup);
+N       = 200;        % number of simulations
+nAssets = p.NumAssets;
+nPort   = 100;        % points on each frontier
 
-% Optimization setup (same constraints as point a)
-options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp', ...
-                      'MaxFunctionEvaluations', 10000, 'MaxIterations', 1000);
-fprintf('Total simulations: %d\n', M);
-fprintf('Points per frontier: %d\n', nPort);
-fprintf('Total optimizations: %d\n\n', M * nPort);
+RiskPtfSim = zeros(nPort, N);
+RetPtfSim  = zeros(nPort, N);
+Weights    = zeros(nAssets, nPort, N); % store weights for each simulation
 
-valid_simulations = 0;
-% Main resampling loop
-for m = 1:M 
-    if mod(m, 50) == 0
-        fprintf('Completed %d/%d simulations...\n', m, M);
-    end
-    % Generate sample of T daily observations
-    % Simulate T days of returns for all assets from multivariate normal
-    Cov_sim_daily = iwishrnd(V0_daily, NumAssets);        % may we can add +10 to NumAssets to make it more stable.
-    e_sim_daily = mvnrnd(e0_daily, Cov_sim_daily/NumAssets)';  % Rendimenti con incertezza
-
-    % Estimate parameters for this sample
-    e_i = e_sim_daily * 252;             % Annualized returns
-    V_i = Cov_sim_daily * 252;           % Annualized covariance
+for n = 1:N
     
-    % Create portfolio with simulated moments
-    frontier_valid = true;
+    % Simulate a vector of Expected Returns and a Covariance matrix
+    R_sim  = mvnrnd(ExpRet, V)';
+    Cov_sim = iwishrnd(V, nAssets);
     
-    for j = 1:nPort
-        targetRet = Ret_range(j);
-        
-        % Define constraints (stessi del punto 1.a)
-        Aeq_temp = [ones(1, NumAssets); e_i'];
-        b_eq_temp = [1; targetRet];
-        
-        fun_temp = @(x) x' * V_i * x;
-        
-        [w_opt, ~, exitflag] = fmincon(fun_temp, x0, A_ineq, b_ineq, Aeq_temp, b_eq_temp, ...
-                                      lb, ub, [], options);
-        
-        if exitflag > 0
-            WeightsSim(:, j, m) = w_opt;
-            RiskPtfSim(j, m) = sqrt(w_opt' * V_i * w_opt);
-            RetPtfSim(j, m) = w_opt' * e_i;
-        else
-            frontier_valid = false;
-            break;
-        end
-    end
+    % Set simulated moments
+    P_sim = setAssetMoments(p, R_sim', Cov_sim); 
+    
+    % Estimates Efficient Frontier with estimated paramenters
+    w_sim = estimateFrontier(P_sim, nPort);     % nAssets x nPort
+    Weights(:,:,n) = w_sim;
+    
+    % Ptf moments on simulated frontier
+    [pf_risk, pf_ret] = estimatePortMoments(P_sim, w_sim);
+    RiskPtfSim(:,n) = pf_risk;
+    RetPtfSim(:,n)  = pf_ret;
+end 
 
-    if frontier_valid
-        valid_simulations = valid_simulations + 1;
-    else
-        WeightsSim(:, :, m) = NaN;
-        RiskPtfSim(:, m) = NaN;
-        RetPtfSim(:, m) = NaN;
-    end
-end
+% Mean weights on every point of the frontier
+meanWeights = mean(Weights,3);
 
-valid_mask = ~isnan(squeeze(WeightsSim(1, 1, :)));
-WeightsSim_valid = WeightsSim(:, :, valid_mask);
-RiskPtfSim_valid = RiskPtfSim(:, valid_mask);
-RetPtfSim_valid = RetPtfSim(:, valid_mask);
+P_avg = setAssetMoments(p, ExpRet, V); 
+[RobustRisk, RobustRet] = estimatePortMoments(P_avg, meanWeights);
 
-% Calculate final robust frontier as AVERAGE of all frontiers
-meanWeights = mean(WeightsSim, 3, 'omitnan');
-
-% Initialize vol and ret
-RobustRisk = zeros(nPort, 1);
-RobustRet = zeros(nPort, 1);
-
-for j = 1:nPort
-    RobustRisk(j) = sqrt(meanWeights(:, j)' * V * meanWeights(:, j));
-    RobustRet(j) = meanWeights(:, j)' * ExpRet';
-end
-
-% Take just valid points
+% For safety take out NaN
 valid_points = ~isnan(RobustRisk) & ~isnan(RobustRet);
-RobustRisk = RobustRisk(valid_points);
-RobustRet = RobustRet(valid_points);
-meanWeights = meanWeights(:, valid_points);
+RobustRisk   = RobustRisk(valid_points);
+RobustRet    = RobustRet(valid_points);
+meanWeights  = meanWeights(:, valid_points);
 
-% RMVP 
+% Robust MVP (C): punto con varianza minima sulla frontiera robusta
 [vol_MVP_RF, idx_MVP_RF] = min(RobustRisk);
 ret_MVP_RF = RobustRet(idx_MVP_RF);
-w_MVP_RF = meanWeights(:, idx_MVP_RF);
+w_MVP_RF   = meanWeights(:, idx_MVP_RF);
 
-Print_Ptfs(ret_MVP_RF, vol_MVP_RF, w_MVP_RF, 'C (Robust MVP)')
+Print_Ptfs(ret_MVP_RF, vol_MVP_RF, w_MVP_RF, 'C (Robust MVP)');
 
-% RMSRP
+% Robust MSRP (D): punto con massimo Sharpe rispetto a rf
 SharpeRatios_RF = (RobustRet - rf) ./ RobustRisk;
 [~, idx_MSRP_RF] = max(SharpeRatios_RF);
-w_MSRP_RF = meanWeights(:, idx_MSRP_RF);
+w_MSRP_RF   = meanWeights(:, idx_MSRP_RF);
 vol_MSRP_RF = RobustRisk(idx_MSRP_RF);
 ret_MSRP_RF = RobustRet(idx_MSRP_RF);
 
-%check_constraints(w_MVP_RF, table, 'Portfolio C (Robust MVP)');
-%check_constraints(w_MSRP_RF, table, 'Portfolio D (Robust MSRP)');
+Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)');
 
-Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)')
+% === 6) Plot frontiera robusta e confronto con frontiera "classica" =====
+% Plot solo robust
+Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, ...
+                     w_MVP_RF, w_MSRP_RF, rf);
 
-Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, w_MVP_RF, w_MSRP_RF, rf)
-Plot_Both_Frontiers(FrontierVola, FrontierRet, RobustRisk, RobustRet, ...
-                              w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf)
+% Plot entrambe
+Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
+                    RobustRisk, RobustRet, ...
+                    w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
+                    w_MVP_RF, w_MSRP_RF, ...  % robusti
+                    V, ExpRet, rf);
 
 %% Point 2.a) BLM equilibrium returns
 
@@ -351,8 +316,6 @@ fprintf('View 3: Asset_2 > Asset_13 by %.1f%%\n', q(3)*100);
 C = tau * V;
 A = (C\eye(NumAssets) + P'/Omega*P);
 b = (P'/Omega*q + C\mu_MKT);
-
-% Post exp ret
 mu_BL = A \ b;
 
 % Post covariance
@@ -452,7 +415,7 @@ for i = 1:length(target_Vol)
     sigma_tar = target_Vol(i);
     nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
     
-    [w_opt, fval, exitflag] = fmincon(fun, w0, Aineq, bineq, Aeq, beq, lb, ub, nonlcon);
+    [w_opt, fval, exitflag] = fmincon(fun, w0, Aineq, bineq, Aeq, beq, lb, ub, nonlcon, options);
 
     if exitflag > 0 % soluzione trovata
         weights_DR_frontier(:,i) = w_opt;
@@ -477,27 +440,28 @@ grid on
 
 %% Compute the Portfolio with Maximum Entropy in risk contributions
 
-fun2 = @(w) sum({[w.*(V*w)]/(w'*V*w)}.*log([w.*(V*w)]/(w'*V*w)));
+k_fun = @(w) (w .* (V*w)) ./ (w' * V * w);   % vettore delle risk contributions normalizzate
+eps_  = 1e-12;                               % per evitare log(0)
 
-Entropy_vals = zeros(size(targetVol));
-weights_ENT_frontier = zeros(NumAssets, length(targetVol));
+fun2  = @(w) sum( k_fun(w) .* log( k_fun(w) + eps_ ) );
 
-for k = 1:length(target_Vol)
+Entropy_vals = zeros(size(target_Vol));
+weights_ENT_frontier = zeros(NumAssets, length(target_Vol));
 
-    sigma_tar = target_Vol(i);
-    nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
+for j = 1:length(target_Vol)
 
-    [w_opt, fval, exitflag] = fmincon(fun2, x0, Aineq,bineq,Aeq, beq, lb, ub, nonlcon);
+    sigma_tar = target_Vol(j);
+    nonlcon   = @(w) deal([], sqrt(w' * V * w) - sigma_tar);  % vincolo: sigma(w) = sigma_tar
+    
+    [w_opt, fval, exitflag] = fmincon(fun2, w0, Aineq, bineq, Aeq, beq, ...
+                                      lb, ub, nonlcon, options);
 
-    if exitflag > 0 % soluzione trovata
-        weights_ENT_frontier(:,k) = w_opt;
-        Entropy_vals(k) = -fval;
-
+    if exitflag > 0  % soluzione trovata
+        weights_ENT_frontier(:, j) = w_opt;
+        Entropy_vals(j)            = -fval;   % minus perché f = sum(k log k) ≤ 0
     else 
-        Entropy_vals(k) = NaN;
-
+        Entropy_vals(j) = NaN;
     end 
-
 end
 
 [~, idx_ME] = max(Entropy_vals);
@@ -510,32 +474,180 @@ ylabel('Entropy in risk contributions')
 title('Entropy–Risk Frontier')
 grid on
 
-%% Compare this ptfs with the equally weighted benchmark in terms of: DR, Vol, Sharpe Ratio, Herfindahl index
+% Combined Plot: DR frontier + Entropy frontier
 
-w_eq = (1/NumAssets)*ones(1,NumAssets); % equally weighted 
+figure;
+hold on; grid on; box on;
+
+% Plot delle due curve
+plot(target_Vol, DR_vals, 'LineWidth', 2, 'Color', [0 0.447 0.741]);      % blu
+plot(target_Vol, Entropy_vals, 'LineWidth', 2, 'Color', [0.85 0.325 0.098]); % arancione
+
+% Punti speciali
+plot(target_Vol(idx_MDR), DR_vals(idx_MDR), 'o', 'MarkerSize', 8, ...
+     'MarkerFaceColor', [0 0.447 0.741], 'MarkerEdgeColor', 'k');
+text(target_Vol(idx_MDR), DR_vals(idx_MDR), '  MDR (G)', 'FontSize', 10);
+
+plot(target_Vol(idx_ME), Entropy_vals(idx_ME), 'o', 'MarkerSize', 8, ...
+     'MarkerFaceColor', [0.85 0.325 0.098], 'MarkerEdgeColor', 'k');
+text(target_Vol(idx_ME), Entropy_vals(idx_ME), '  ME (H)', 'FontSize', 10);
+
+% Labels
+xlabel('Portfolio Volatility','FontSize',12)
+ylabel('Value','FontSize',12)
+title('Diversification & Entropy Frontiers','FontSize',14)
+
+% Legenda
+legend({'Diversification Ratio Frontier',...
+        'Entropy in Risk Contributions Frontier',...
+        'MDR (max Diversification Ratio)',...
+        'ME (max Entropy)'},...
+       'Location','best')
+
+hold off;
+
+%% Compare this ptfs with the equally weighted benchmark in terms of: 
+%   DR, Vol, Sharpe Ratio, Herfindahl index
+
+w_eq = (1/NumAssets)*ones(NumAssets,1);  % equally weighted (colonna)ß
 
 % Diversification Ratio
 
-DR_eq = (w_eq'*sigma_i) / sqrt(w_eq'*V*w_eq);
-DR_MDR = max(DR_vals);
-DR_ME = (w_opt_ME'*sigma_i) / sqrt(w_opt_ME'*V*w_opt_ME);
+DR_eq  = (w_eq'      * sigma_i) / sqrt(w_eq'      * V * w_eq);
+DR_MDR = (w_opt_MDR' * sigma_i) / sqrt(w_opt_MDR' * V * w_opt_MDR);
+DR_ME  = (w_opt_ME'  * sigma_i) / sqrt(w_opt_ME'  * V * w_opt_ME);
 
 % Volatility
 
-Vol_eq = sqrt(w_eq'*V*w_eq);
-Vol_MDR = sqrt(w_opt_MDR'*V*w_opt_MDR);
-Vol_ME = sqrt(w_opt_ME'*V*w_opt_ME);
+Vol_eq  = sqrt(w_eq'      * V * w_eq);
+Vol_MDR = sqrt(w_opt_MDR' * V * w_opt_MDR);
+Vol_ME  = sqrt(w_opt_ME'  * V * w_opt_ME);
 
 % Sharpe Ratio
 
-SR_eq = (w_eq*ExpRet')/Vol_eq;
-SR_MDR = (w_opt_MDR*ExpRet')/Vol_MDR;
-SR_ME = (w_opt_ME*ExpRet')/Vol_ME;
+SR_eq  = (w_eq'      * ExpRet' - rf) / Vol_eq;
+SR_MDR = (w_opt_MDR' * ExpRet' - rf) / Vol_MDR;
+SR_ME  = (w_opt_ME'  * ExpRet' - rf) / Vol_ME;
 
 % Herfindahl Index
 
-HI_eq = sum(w_eq.^2);
+HI_eq  = sum(w_eq.^2);
 HI_MDR = sum(w_opt_MDR.^2);
-HI_ME = sum(w_opt_ME.^2);
+HI_ME  = sum(w_opt_ME.^2);
+
+% PRINT COMPARISON TABLE
+
+MetricNames = {'DR'; 'Volatility'; 'Sharpe Ratio'; 'Herfindahl Index'};
+
+% Matrice 4x3 con tutte le metriche
+MetricsMatrix = [
+    DR_eq,   DR_MDR,   DR_ME;
+    Vol_eq,  Vol_MDR,  Vol_ME;
+    SR_eq,   SR_MDR,   SR_ME;
+    HI_eq,   HI_MDR,   HI_ME
+];
+
+% Conversione in tabella
+ComparisonTable = array2table(MetricsMatrix, ...
+    'RowNames', MetricNames, ...
+    'VariableNames', {'EqualWeighted', 'MDR_G', 'ME_H'});
+
+disp('=== Comparison of Portfolios: EW vs. MDR (G) vs. ME (H) ===')
+disp(ComparisonTable)
+
+%%
+muR    = mean(logret);       % 1 x N
+sigmaR = std(logret);        % 1 x N
+
+% Standardize returns
+RetStd = (logret - muR) ./ sigmaR;   % T x N
+
+k = 5;  % number of principal components
+
+[Loadings, Scores, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+covarFactor = cov(Scores);           % k x k
+
+% Reconstructed standardized returns and residuals
+RetStd_hat   = Scores * Loadings';   % T x N
+epsilon_std  = RetStd - RetStd_hat;  % T x N
+Psi_std      = var(epsilon_std,0,1); % 1 x N
+
+Lambda  = diag(sigmaR);
+D       = diag(Psi_std);
+
+CovarPCA = Lambda * (Loadings * covarFactor * Loadings' + D) * Lambda;
+
+% Reconstructed returns in original units
+reconReturn    = RetStd_hat .* sigmaR + muR;   % implicit expansion ok (R2016b+)
+unexplainedRetn = logret - reconReturn;
+
+% Explained variance by first k components
+ExplainedVar = latent(1:k) / sum(latent);
+
+figure;
+bar(ExplainedVar*100);
+title('Variance explained by each Principal Component');
+xlabel('Principal Component');
+ylabel('Explained Variance (%)');
+
+% Cumulative explained variance (all components)
+CumExplVar = cumsum(explained);   % "explained" è già in percentuale
+n_pc       = 1:length(explained);
+
+figure;
+plot(n_pc, CumExplVar, 'm', 'LineWidth', 2);
+hold on;
+scatter(n_pc, CumExplVar, 'm', 'filled');
+grid on;
+xlabel('Number of Principal Components');
+ylabel('Cumulative Explained Variance (%)');
+title('Cumulative Percentage of Explained Variance');
 
 
+%% Maximum Sharpe Ratio Optimization (PCA model)
+func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
+[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, [],[],Aeq,beq,lb,ub, [], options);
+
+%% Ptf with minimum CVaR at 5% tail prob, under standard constraints and a TargetVol = 10% annualized
+
+alpha = 0.95 % 5% tail prob.
+
+% Minimization problem using Rockafellar & Uryasev approach: 
+% w = portfolio weights (NumAssets x 1)
+% eta = VaR threshold (1 x 1)
+% u_i = slack variables for losses beyond VaR (t x 1)
+% Objective: minimize [eta + 1/((1-alpha)*N)*sum(u_i)]
+
+Sigma = cov(logret);
+t = size(logret,1) % number of scenarios.
+
+% Vector of the obj fun coefficients: [w(1:NumAssets), eta, u_i(1:t)]:
+coeff = [zeros(NumAssets,1); 1; (1/((1-alpha)*t))*ones(t,1)]; %initialized
+
+% Constraints:
+A1 = [-logret, -ones(t,1), -eye(t)];   % u_i >= -L_i(w) - eta
+A2 = [zeros(t,NumAssets+1), -eye(t)];     % u_i >= 0
+A = [A1; A2];
+b = zeros(2*t,1);
+
+% Equality: 
+Aeq = [ones(1,NumAssets), 0, zeros(1,t)]; % sum(w) = 1
+beq = 1; 
+
+% Bounds
+lb = [zeros(NumAssets,1); -Inf; zeros(t,1)]; % w(i) >= 0 for each i
+ub = [];
+fun = @(x) x(NumAssets+1) + (1/((1-alpha)*T)) * sum(x(NumAssets+2:end));
+[x_sol, fval] = fmincon(fun, x0, A, b, Aeq, beq, lb, ub, ...
+    @(x) nonlinConstr(x, Sigma, NumAssets), options);
+
+w_CVaR = x(1:NumAssets);
+eta = x(NumAssets+1);
+u = x(NumAssets+2:end);
+CVaR_value = eta + (1/((1-alpha)*t))*sum(u);
+
+disp(['Optimized CVaR (95%): ', num2str(CVaR_value)]);
+
+% decide how to handle the constraint "target volatility of 10%
+% annualized", because adding a nonlinear constraint we can't use the
+% Linear Programmig Formulation by Rockafellar & Uryasev.

@@ -1,13 +1,10 @@
-function Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
-%PLOT_FRONTIER Summary of this function goes here
-%   Detailed explanation goes here
-
+function Plot_Frontier(FrontierVola, FrontierRet, NumAssets, V, ExpRet, SharpeFrontier)
     % EW
     WeightsEW = (1/NumAssets).*ones(NumAssets,1);
     vol_EW = sqrt(WeightsEW'*V*WeightsEW);
     ret_EW = WeightsEW'*ExpRet';
     
-    % MV
+    % MV - Trovo l'indice e i valori dell'MVP
     [~, idx_MVP] = min(FrontierVola);
     vol_MVP = FrontierVola(idx_MVP);
     ret_MVP = FrontierRet(idx_MVP);
@@ -18,7 +15,17 @@ function Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontie
     ret_MSRP = FrontierRet(idx_MSRP);
     
     figure;
-    plot(FrontierVola, FrontierRet, 'LineWidth', 2.5, 'Color', [0 0.45 0.74]); % blu elegante
+    
+    % --- MODIFICA QUI ---
+    % Creo una maschera logica: prendo solo i punti con rendimento >= MVP
+    % Questo taglia via automaticamente il ramo inferiore
+    isEfficient = FrontierRet >= ret_MVP; 
+    
+    % Plotto SOLO i dati filtrati
+    plot(FrontierVola(isEfficient), FrontierRet(isEfficient), ...
+         'LineWidth', 2.5, 'Color', [0 0.45 0.74]); % blu elegante
+    % --------------------
+    
     hold on;
     
     scatter(vol_EW, ret_EW, 80, 'filled', 'MarkerFaceColor', [0.85 0.33 0.10]); % arancione
@@ -35,6 +42,4 @@ function Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontie
     grid on;
     box on;
     set(gca, 'FontSize', 11);
-
 end
-

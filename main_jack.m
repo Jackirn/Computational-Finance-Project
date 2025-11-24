@@ -234,17 +234,16 @@ ret_MSRP_RF = RobustRet(idx_MSRP_RF);
 
 Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)');
 
-% === 6) Plot frontiera robusta e confronto con frontiera "classica" =====
 % Plot solo robust
 Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, ...
                      w_MVP_RF, w_MSRP_RF, rf);
 
 % Plot entrambe
-Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
-                    RobustRisk, RobustRet, ...
-                    w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
-                    w_MVP_RF, w_MSRP_RF, ...  % robusti
-                    V, ExpRet, rf);
+%Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
+ %                   RobustRisk, RobustRet, ...
+ %                   w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
+ %                   w_MVP_RF, w_MSRP_RF, ...  % robusti
+ %                   V, ExpRet, rf);
 
 %% Point 2.a) BLM equilibrium returns
 
@@ -555,7 +554,7 @@ ComparisonTable = array2table(MetricsMatrix, ...
 disp('=== Comparison of Portfolios: EW vs. MDR (G) vs. ME (H) ===')
 disp(ComparisonTable)
 
-%%
+%% 4a)
 muR    = mean(logret);       % 1 x N
 sigmaR = std(logret);        % 1 x N
 
@@ -564,7 +563,17 @@ RetStd = (logret - muR) ./ sigmaR;   % T x N
 
 k = 5;  % number of principal components
 
-[Loadings, Scores, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+[Loadings_All, Scores_All, latent, ~, explained] = pca(RetStd, 'NumComponents', k);
+
+cumVar = cumsum(latent) / sum(latent);
+target_var = 0.85; % Soglia 85%
+k = find(cumVar >= target_var, 1, 'first');
+
+ExplainedVar = latent(1:k) / sum(latent);
+
+Loadings = Loadings_All(:, 1:k); 
+Scores   = Scores_All(:, 1:k);
+
 covarFactor = cov(Scores);           % k x k
 
 % Reconstructed standardized returns and residuals
@@ -577,12 +586,18 @@ D       = diag(Psi_std);
 
 CovarPCA = Lambda * (Loadings * covarFactor * Loadings' + D) * Lambda;
 
+v1 = Loadings(:, 1);
+
+A = v1';      % w' * v1 <= 0.5
+b = 0.5;
+
 % Reconstructed returns in original units
 reconReturn    = RetStd_hat .* sigmaR + muR;   % implicit expansion ok (R2016b+)
 unexplainedRetn = logret - reconReturn;
 
 % Explained variance by first k components
-ExplainedVar = latent(1:k) / sum(latent);
+
+fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', k, sum(ExplainedVar)*100);
 
 figure;
 bar(ExplainedVar*100);
@@ -603,7 +618,11 @@ xlabel('Number of Principal Components');
 ylabel('Cumulative Explained Variance (%)');
 title('Cumulative Percentage of Explained Variance');
 
-
 %% Maximum Sharpe Ratio Optimization (PCA model)
+
 func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
-[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, [],[],Aeq,beq,lb,ub, [], options);
+[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, A, b, Aeq, beq, lb, ub, [], options);
+disp('--- Risultati ---');
+disp(['Sharpe Ratio: ', num2str(-fval_sharpe)]);
+disp(['Volatilità (CovarPCA): ', num2str(sqrt(w_sharpe' * CovarPCA * w_sharpe))]);
+disp(['Esposizione v1: ', num2str(w_sharpe' * v1)]);
