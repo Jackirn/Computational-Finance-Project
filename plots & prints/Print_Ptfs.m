@@ -1,16 +1,26 @@
 function Print_Ptfs(ret,vol,w,name)
-%PRINT_PTFS Summary of this function goes here
-%   Detailed explanation goes here
-    fprintf('\nPortfolio %s:\n', name);
-    fprintf('  Expected Return: %.2f%%\n', ret * 100);
-    fprintf('  Volatility:      %.2f%%\n', vol * 100);
-    fprintf('  Top 3 holdings:\n');
-    [sorted_weights_C, idx_C] = sort(w, 'descend');
-    for i = 1:3
-        if sorted_weights_C(i) > 0.01
-            fprintf('    Asset %d: %.2f%%\n', idx_C(i), sorted_weights_C(i)*100);
+    fprintf('\n===============================================================\n');
+    fprintf('                     Portfolio %-10s\n', name);
+    fprintf('===============================================================\n');
+
+    % Core stats
+    fprintf('Expected Return:      %8.3f%%\n', ret * 100);
+    fprintf('Volatility:           %8.3f%%\n', vol * 100);
+
+    % Top holdings
+    fprintf('---------------------------------------------------------------\n');
+    fprintf('Top 3 Holdings:\n');
+
+    [sorted_w, idx] = sort(w, 'descend');
+
+    for i = 1:min(3, length(w))
+        if sorted_w(i) > 0.005   % show only meaningful weights (>0.5%)
+            fprintf('  %-12s   %8.2f%%\n', ...
+                sprintf('Asset %d', idx(i)), sorted_w(i)*100);
         end
     end
-    fprintf('\n')
+
+    fprintf('===============================================================\n\n');
+
 end
 

@@ -1,4 +1,4 @@
-clear all
+clear 
 close all
 clc
 rng(42)
@@ -29,6 +29,10 @@ table_capw2 = readtable(strcat(path_map,filename2));
 % Mapping Table
 filename = 'mapping_table.csv';
 table = readtable(strcat(path_map, filename));
+
+defensive_assets = contains(table.MacroGroup, 'Defensive');
+neutral_assets = contains(table.MacroGroup, 'Neutral'); 
+cyclical_assets = contains(table.MacroGroup, 'Cyclical');
 
 %% Selection of a subset of Dates (In-Sample Dataset)
 
@@ -68,41 +72,49 @@ for n = 1:N
     SharpePtfs(n) = RetPtfs(n)/VolaPtfs(n);
 end
 
-figure;
-scatter(VolaPtfs, RetPtfs, [], SharpePtfs, 'filled');
-hold on;
+%% Standard Constraints & Global Variables and functions
+
+% Bound constraints
+lb = zeros(NumAssets,1);
+ub = 0.30*ones(NumAssets,1);
+
+% Group membership vectors
+isDef = defensive_assets;   % logical indices
+isNeu = neutral_assets;
+
+% Macro groups matrices: same structure for fmincon and portfolio object
+G = zeros(2, NumAssets);
+G(1, isDef) = 1;      % Defensive
+G(2, isNeu) = 1;      % Neutral
+
+LowerGroup = [0; 0.20];   % Defensive ≥ 0, Neutral ≥ 20%
+UpperGroup = [0.45; 1.00];% Defensive ≤45%, Neutral ≤100%
+
+% Convert group constraints into fmincon A,b form
+
+% Defensive ≤ 45%  -> sum(def) ≤ 0.45
+A_def = G(1,:);
+b_def = UpperGroup(1);
+
+% Neutral ≥ 20% → -sum(neu) ≤ -0.20
+A_neu = -G(2,:);
+b_neu = -LowerGroup(2);
+
+% Combine all linear constraints
+A_ineq = [A_def; A_neu; eye(NumAssets)];
+b_ineq = [b_def; b_neu; ub];
+
+x0 = ones(NumAssets,1)/NumAssets;      % initial guess = equal weights
+rf = 0;
+fun = @(x) x'*V*x;                     % objective = variance
+options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
 
 %% Point 1.a) Compute the Efficient Frontier
 
-fun = @(x) x'*V*x;                     % objective = variance
 ret_range = linspace(min(RetPtfs), max(RetPtfs),100);
-x0 = ones(NumAssets,1)/NumAssets;      % initial guess = equal weights
-lb = zeros(1,NumAssets);               % lower bound --> every w(i) must be >= 0 --> no short selling.
-ub = ones(1,NumAssets);                % upper bound --> every w(i) must be <= 1.
 
 FrontierVola = zeros(1,length(ret_range)); % we have to compute the exp_ret and volat for every point in the ret_range.
 FrontierRet  = zeros(1,length(ret_range));
-
-A_max = eye(NumAssets); % constraint: maximum exposition of every asset set to 0.3.
-b_max = 0.3*ones(NumAssets,1);
-
-% Leggi la classificazione dal mapping table
-defensive_assets = contains(table.MacroGroup, 'Defensive');
-neutral_assets = contains(table.MacroGroup, 'Neutral'); 
-cyclical_assets = contains(table.MacroGroup, 'Cyclical');
-
-% Neutral >= 20%: sum(w_neutral) >= 0.20
-A_neutral = -neutral_assets';  % -sum(w_neutral) <= -0.20
-b_neutral = -0.20;
-
-% Defensive <= 45%: sum(w_defensive) <= 0.45  
-A_defensive = defensive_assets';
-b_defensive = 0.45;
-
-A_ineq = [A_neutral; A_defensive; A_max];
-b_ineq = [b_neutral; b_defensive; b_max];
-
-options = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
 
 WeightsFrontier = zeros(16,length(ret_range));
 feasible_points = true(1, length(ret_range));
@@ -125,17 +137,6 @@ for i = 1:length(ret_range)
     end
 end
 
-fun = @(w) w'*V*w;
-x0  = ones(NumAssets,1)/NumAssets;
-lb  = zeros(NumAssets,1);
-ub  = ones(NumAssets,1);
-
-Aeq_MVP = ones(1,NumAssets);
-beq_MVP = 1;
-
-%w_MVP = fmincon(fun, x0, A_ineq, b_ineq, Aeq_MVP, beq_MVP, lb, ub);
-% w_MVP represents the Minimum Variance Portfolio with the constraints said above.
-
 % MVP with the above constraints
 
 [~, idx_MVP] = min(FrontierVola);
@@ -143,45 +144,32 @@ w_MVP = WeightsFrontier(:, idx_MVP);
 vol_MVP = FrontierVola(idx_MVP);
 ret_MVP = FrontierRet(idx_MVP);
 
-Print_Ptfs(ret_MVP, vol_MVP, w_MVP, 'A (MVP)')
-
 % MSRP with the above constraints
 
-rf = 0;
 SharpeFrontier = (FrontierRet - rf) ./ FrontierVola;
 [~, idx_MSRP] = max(SharpeFrontier);
 w_MSRP = WeightsFrontier(:, idx_MSRP);
-
 vol_MSRP = FrontierVola(idx_MSRP);
 ret_MSRP = FrontierRet(idx_MSRP);
 
+% Print and Plot
+Print_Ptfs(ret_MVP, vol_MVP, w_MVP, 'A (MVP)')
 Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)')
-
-% Plot
 Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 
 %% 1.b Robust Frontier
 
 p = Portfolio('AssetList', nm);    
-p = setDefaultConstraints(p);      % weight sum = 1, w >= 0
+p = setDefaultConstraints(p);          % weight sum = 1, w >= 0
 
-ub = 0.30*ones(p.NumAssets,1);          % max 30%
-p  = setBounds(p, p.LowerBound, ub);    % LowerBound already taken into 
-                                        % account by setDefaultConstraints
-isDef = strcmp(table.MacroGroup, 'Defensive'); 
-isNeu = strcmp(table.MacroGroup, 'Neutral');
-
-G = zeros(2, p.NumAssets);
-G(1, isDef) = 1;      % Defensive
-G(2, isNeu) = 1;      % Neutral
-
-LowerGroup = [0;    0.20];  % Defensive ≥0, Neutral ≥ 20%
-UpperGroup = [0.45; 1.00];  % Defensive ≤ 45%, Neutral ≤ 100%
-                           
+p = setBounds(p, p.LowerBound, ub);    % LowerBound already taken into 
+                                       % account by setDefaultConstraints
+                  
 p = setGroups(p, G, LowerGroup, UpperGroup);
-N       = 200;        % number of simulations
+
+N = 200;               % number of simulations
 nAssets = p.NumAssets;
-nPort   = 100;        % points on each frontier
+nPort = 100;           % points on each frontier
 
 RiskPtfSim = zeros(nPort, N);
 RetPtfSim  = zeros(nPort, N);
@@ -232,18 +220,12 @@ w_MSRP_RF   = meanWeights(:, idx_MSRP_RF);
 vol_MSRP_RF = RobustRisk(idx_MSRP_RF);
 ret_MSRP_RF = RobustRet(idx_MSRP_RF);
 
+% Print and Plots
 Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)');
-
-% Plot solo robust
 Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, ...
                      w_MVP_RF, w_MSRP_RF, rf);
-
-% Plot entrambe
-%Plot_Both_Frontiers(FrontierVola, FrontierRet, ...
- %                   RobustRisk, RobustRet, ...
- %                   w_MVP, w_MSRP, ...        % dal punto 1.a (classico)
- %                   w_MVP_RF, w_MSRP_RF, ...  % robusti
- %                   V, ExpRet, rf);
+Plot_Both_Frontiers(FrontierVola, FrontierRet, RobustRisk, RobustRet, ...
+                    w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf);
 
 %% Point 2.a) BLM equilibrium returns
 
@@ -251,64 +233,29 @@ cap_weights = table_capw2{:, 3};
 w_MKT = cap_weights(1:NumAssets) ./ sum(cap_weights(1:NumAssets)); % market weights
 
 % Calculate market portfolio statistics
-ExpRet_MKT = w_MKT' * ExpRet'; % Expected return of market portfolio
+ExpRet_MKT = w_MKT' * ExpRet';   % Expected return of market portfolio
 sigma2_MKT = w_MKT' * V * w_MKT; % Variance of market portfolio
 
 lambda = (ExpRet_MKT - rf) / sigma2_MKT; % Common approach for computing lambda
+mu_MKT = lambda * V * w_MKT;             % Implied Equilibrium Return Vector
 
-mu_MKT = lambda * V * w_MKT; % Implied Equilibrium Return Vector
-
-%fprintf('\nEquilibrium Returns:\n');
-%for i = 1:length(mu_MKT)
-%    fprintf('  %s: %.4f\n', nm{i}, mu_MKT(i));
-%end
+% Print
+printBLMeq(ExpRet_MKT,sigma2_MKT,lambda,NumAssets,w_MKT,mu_MKT)
 
 %% Point 2.b) Building Our Views
 
-v = 3; % number of views.
+v = 3;                  % number of views.
 tau = 1/length(logret); % 1/N_obs.
+Omega = zeros(v);       % uncertainty of views
 
-P = zeros(v, NumAssets);  
-q = zeros(v, 1);          % expected returns from views
-Omega = zeros(v);         % uncertainty of views
-
-Asset_Macro = string(table.MacroGroup);
-
-% View 1: we expect Cyclical assets to outperform Neutral ones by 2% annualized
-cyclical_mask = strcmp(Asset_Macro, 'Cyclical');
-neutral_mask = strcmp(Asset_Macro, 'Neutral');
-
-c = sum(cyclical_mask);
-n = sum(neutral_mask);
-
-P(1, cyclical_mask) = 1/c;
-P(1, neutral_mask) = -1/n;
-q(1) = 0.02;
-
-% View 2: we expect Asset_10 to underperform average Defensive group by -0.7% annualized
-defensive_mask = strcmp(Asset_Macro, 'Defensive');
-
-d = sum(defensive_mask);
-
-P(2, 10) = 1;  % Asset_10
-P(2, defensive_mask) = P(2, defensive_mask) - 1/d;
-q(2) = -0.007; % underperformance
-
-% View 3: we expect Asset_2 to outperform Asset_13 by 1% annualized
-P(3, 2) = 1;   % Asset_2
-P(3, 13) = -1; % Asset_13  
-q(3) = 0.01;
-
-% compute Omega, assuming that views are independent --> reason why Omega% is diagonal.
+[P,q] = ComputeViews(v,NumAssets,table);
 
 for i = 1:v
     Omega(i,i) = tau * P(i,:) * V * P(i,:)';
 end
 
-fprintf('\nBlack-Litterman Views Verification:\n');
-fprintf('View 1: Cyclical > Neutral by %.1f%%\n', q(1)*100);
-fprintf('View 2: Asset_10 < Defensive avg by %.1f%%\n', abs(q(2))*100);
-fprintf('View 3: Asset_2 > Asset_13 by %.1f%%\n', q(3)*100);
+% Print
+PrintViews(q);
 
 %% Point 2.c) Calculate Posterior Expected Returns
 
@@ -320,28 +267,12 @@ mu_BL = A \ b;
 % Post covariance
 covBL = inv(P'/Omega*P + inv(C));
 
-fprintf('\nBlack-Litterman Posterior Returns - Top Changes:\n');
-fprintf('Asset\t\tPrior\t\tPosterior\tChange\t\t%% Change\n');
-changes = mu_BL - mu_MKT;
-[~, sorted_idx] = sort(abs(changes), 'descend');
-
-for i = 1:min(8, NumAssets)
-    idx = sorted_idx(i);
-    pct_change = (mu_BL(idx) - mu_MKT(idx)) / abs(mu_MKT(idx)) * 100;
-    fprintf('%s\t\t%.4f\t\t%.4f\t\t%+.4f\t\t%+.1f%%\n', ...
-            nm{idx}, mu_MKT(idx), mu_BL(idx), changes(idx), pct_change);
-end
-
-view_impact = norm(mu_BL - mu_MKT);
-fprintf('\nTotal impact from views: %.6f (%.2f%% of average prior return)\n', ...
-        view_impact, view_impact/mean(abs(mu_MKT))*100);
+% Print
+PrintExpRetBLM(NumAssets,mu_BL,mu_MKT,nm)
 
 %% Point 2.d) Compute Efficient Frontier with Posterior Returns
 
 % Std constraints
-Aeq_BL = ones(1, NumAssets);
-beq_BL = 1;
-lb_BL = zeros(NumAssets, 1);
 ub_BL = ones(NumAssets, 1); % no more 30% on single asset
 
 % Frontier with BL parameters
@@ -355,7 +286,7 @@ for i = 1:length(ret_range_BL)
     Aeq_temp = [ones(1, NumAssets); mu_BL'];
     beq_temp = [1; r];
     
-    [w_opt, ~, exitflag] = fmincon(fun, x0, [], [], Aeq_temp, beq_temp, lb_BL, ub_BL, [], options);
+    [w_opt, ~, exitflag] = fmincon(fun, x0, [], [], Aeq_temp, beq_temp, lb, ub_BL, [], options);
     
     if exitflag > 0
         FrontierVola_BL(i) = sqrt(w_opt' * V * w_opt);
@@ -384,63 +315,67 @@ Print_Ptfs(ret_MSRP_BL, vol_MSRP_BL, w_MSRP_BL, 'F (BL MSRP)')
 
 %% Point 3.a) Compute the Portfolio with Maximum Diversification Ratio
 
-sigma_i = sqrt(diag(V)); % equal to use std(logret)
+lb = zeros(NumAssets,1);
+ub = 0.25 * ones(NumAssets,1);
 
-target_Vol = linspace(min(VolaPtfs),max(VolaPtfs),100); 
+% Group constraints for this exercise
+% Cyclical >= 20%  ->  -sum(w_cyclical) <= -0.20
+A_cyc = -cyclical_assets';
+b_cyc = -0.20;
+
+% Defensive <= 50%
+A_def = defensive_assets';
+b_def = 0.50;
+
+% Combine inequality constraints
+Aineq_3 = [A_cyc; A_def];
+bineq_3 = [b_cyc; b_def];
+
+% Equality constraint: fully invested
+Aeq_3 = ones(1, NumAssets);
+beq_3 = 1;
+
+sigma_i = sqrt(diag(V));                            % individual volatilities
+fun_DR = @(w) - (w' * sigma_i) / sqrt(w' * V * w);  % maximize DR <=> minimize -DR
+
+% Frontier grid based on volatility range
+target_Vol = linspace(min(VolaPtfs), max(VolaPtfs), 100);
 
 DR_vals = zeros(size(target_Vol));
 weights_DR_frontier = zeros(NumAssets, length(target_Vol));
 
-fun = @(w) - (w'*sigma_i) / sqrt(w'*V*w); % maximize DR <--> minimize -DR
-Aeq = ones(1,NumAssets); 
-beq = 1; % sum of w(i) equal to 1
-lb = zeros(NumAssets,1); % w(i) >= 0
-ub = 0.25*ones(NumAssets,1); % w(i) <= 0.25
-w0 = ones(NumAssets,1)/NumAssets; % initial guess: equally weighted ptf
-
-% Cyclical >= 20%: sum(w_cyclical) >= 0.20
-A_cyclical = -cyclical_assets';
-b_cyclical = -0.20;
-
-% Defensive <= 50%: sum(w_defensive) <= 0.50  
-A_defensive = defensive_assets';
-b_defensive = 0.50;
-
-Aineq = [A_cyclical; A_defensive];
-bineq = [b_cyclical; b_defensive];
-
 for i = 1:length(target_Vol)
 
     sigma_tar = target_Vol(i);
-    nonlcon = @(w) deal([], sqrt(w'*V*w) - sigma_tar); % we now have a non linear equality constraint
-    
-    [w_opt, fval, exitflag] = fmincon(fun, w0, Aineq, bineq, Aeq, beq, lb, ub, nonlcon, options);
 
-    if exitflag > 0 % soluzione trovata
+    % Nonlinear equality: portfolio volatility = target
+    nonlcon = @(w) deal([], sqrt(w' * V * w) - sigma_tar);
+
+    [w_opt, fval, exitflag] = fmincon(fun_DR, x0, ...
+                                      Aineq_3, bineq_3, ...
+                                      Aeq_3, beq_3, ...
+                                      lb, ub, ...
+                                      nonlcon, options);
+
+    if exitflag > 0
         weights_DR_frontier(:,i) = w_opt;
-        DR_vals(i) = -fval; %(w_opt'*sigma_i)/sqrt(w_opt'*V*w_opt)
-
-    else 
+        DR_vals(i) = -fval; % real DR
+    else
         DR_vals(i) = NaN;
-
-    end 
-
+    end
 end
 
 [~, idx_MDR] = max(DR_vals);
-w_opt_MDR = weights_DR_frontier(:,idx_MDR); % portfolio G.
+w_opt_MDR = weights_DR_frontier(:, idx_MDR);
 
-figure;
-plot(target_Vol, DR_vals, 'LineWidth', 2)
-xlabel('Portfolio Volatility')
-ylabel('Diversification Ratio')
-title('Diversification–Risk Frontier')
-grid on
+% Print and Plot
+Print_MDR_Ptf(w_opt_MDR, DR_vals, target_Vol,idx_MDR)
+Plot_DR_Frontier(target_Vol, DR_vals);
 
 %% Compute the Portfolio with Maximum Entropy in risk contributions
 
-k_fun = @(w) (w .* (V*w)) ./ (w' * V * w);   % vettore delle risk contributions normalizzate
-eps_  = 1e-12;                               % per evitare log(0)
+k_fun = @(w) (w .* (V*w)) ./ (w' * V * w); % vettore delle risk contributions normalizzate
+eps_  = 1e-12;                             % per evitare log(0)
 
 fun2  = @(w) sum( k_fun(w) .* log( k_fun(w) + eps_ ) );
 
@@ -452,8 +387,9 @@ for j = 1:length(target_Vol)
     sigma_tar = target_Vol(j);
     nonlcon   = @(w) deal([], sqrt(w' * V * w) - sigma_tar);  % vincolo: sigma(w) = sigma_tar
     
-    [w_opt, fval, exitflag] = fmincon(fun2, w0, Aineq, bineq, Aeq, beq, ...
-                                      lb, ub, nonlcon, options);
+    [w_opt, fval, exitflag] = fmincon(fun2, x0, Aineq_3, bineq_3, ...
+                                      Aeq_3, beq_3, lb, ub, ...
+                                      nonlcon, options);
 
     if exitflag > 0  % soluzione trovata
         weights_ENT_frontier(:, j) = w_opt;
@@ -466,47 +402,12 @@ end
 [~, idx_ME] = max(Entropy_vals);
 w_opt_ME = weights_ENT_frontier(:,idx_ME); % portfolio H.
 
-figure;
-plot(target_Vol, Entropy_vals, 'LineWidth', 2)
-xlabel('Portfolio Volatility')
-ylabel('Entropy in risk contributions')
-title('Entropy–Risk Frontier')
-grid on
+% Print and Plot
+Print_ME_Ptf(w, Entropy_vals, target_Vol, idx_ME)
+Plot_Entropy_Frontier(target_Vol, Entropy_vals)
 
-% Combined Plot: DR frontier + Entropy frontier
-
-figure;
-hold on; grid on; box on;
-
-% Plot delle due curve
-plot(target_Vol, DR_vals, 'LineWidth', 2, 'Color', [0 0.447 0.741]);      % blu
-plot(target_Vol, Entropy_vals, 'LineWidth', 2, 'Color', [0.85 0.325 0.098]); % arancione
-
-% Punti speciali
-plot(target_Vol(idx_MDR), DR_vals(idx_MDR), 'o', 'MarkerSize', 8, ...
-     'MarkerFaceColor', [0 0.447 0.741], 'MarkerEdgeColor', 'k');
-text(target_Vol(idx_MDR), DR_vals(idx_MDR), '  MDR (G)', 'FontSize', 10);
-
-plot(target_Vol(idx_ME), Entropy_vals(idx_ME), 'o', 'MarkerSize', 8, ...
-     'MarkerFaceColor', [0.85 0.325 0.098], 'MarkerEdgeColor', 'k');
-text(target_Vol(idx_ME), Entropy_vals(idx_ME), '  ME (H)', 'FontSize', 10);
-
-% Labels
-xlabel('Portfolio Volatility','FontSize',12)
-ylabel('Value','FontSize',12)
-title('Diversification & Entropy Frontiers','FontSize',14)
-
-% Legenda
-legend({'Diversification Ratio Frontier',...
-        'Entropy in Risk Contributions Frontier',...
-        'MDR (max Diversification Ratio)',...
-        'ME (max Entropy)'},...
-       'Location','best')
-
-hold off;
-
-%% Compare this ptfs with the equally weighted benchmark in terms of: 
-%   DR, Vol, Sharpe Ratio, Herfindahl index
+%% 3.b) Compare this ptfs with the equally weighted benchmark in terms of: 
+%       DR, Vol, Sharpe Ratio, Herfindahl index
 
 w_eq = (1/NumAssets)*ones(NumAssets,1);  % equally weighted (colonna)ß
 
@@ -534,27 +435,13 @@ HI_eq  = sum(w_eq.^2);
 HI_MDR = sum(w_opt_MDR.^2);
 HI_ME  = sum(w_opt_ME.^2);
 
-% PRINT COMPARISON TABLE
+Print_Portfolio_Comparison(DR_eq, DR_MDR, DR_ME, ...
+                           Vol_eq, Vol_MDR, Vol_ME, ...
+                           SR_eq, SR_MDR, SR_ME, ...
+                           HI_eq, HI_MDR, HI_ME)
 
-MetricNames = {'DR'; 'Volatility'; 'Sharpe Ratio'; 'Herfindahl Index'};
+%% 4.a) PCA Analysis
 
-% Matrice 4x3 con tutte le metriche
-MetricsMatrix = [
-    DR_eq,   DR_MDR,   DR_ME;
-    Vol_eq,  Vol_MDR,  Vol_ME;
-    SR_eq,   SR_MDR,   SR_ME;
-    HI_eq,   HI_MDR,   HI_ME
-];
-
-% Conversione in tabella
-ComparisonTable = array2table(MetricsMatrix, ...
-    'RowNames', MetricNames, ...
-    'VariableNames', {'EqualWeighted', 'MDR_G', 'ME_H'});
-
-disp('=== Comparison of Portfolios: EW vs. MDR (G) vs. ME (H) ===')
-disp(ComparisonTable)
-
-%% 4a)
 muR    = mean(logret);       % 1 x N
 sigmaR = std(logret);        % 1 x N
 
@@ -592,37 +479,57 @@ A = v1';      % w' * v1 <= 0.5
 b = 0.5;
 
 % Reconstructed returns in original units
-reconReturn    = RetStd_hat .* sigmaR + muR;   % implicit expansion ok (R2016b+)
+reconReturn    = RetStd_hat .* sigmaR + muR;
 unexplainedRetn = logret - reconReturn;
-
-% Explained variance by first k components
-
-fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', k, sum(ExplainedVar)*100);
-
-figure;
-bar(ExplainedVar*100);
-title('Variance explained by each Principal Component');
-xlabel('Principal Component');
-ylabel('Explained Variance (%)');
 
 % Cumulative explained variance (all components)
 CumExplVar = cumsum(explained);   % "explained" è già in percentuale
 n_pc       = 1:length(explained);
 
-figure;
-plot(n_pc, CumExplVar, 'm', 'LineWidth', 2);
-hold on;
-scatter(n_pc, CumExplVar, 'm', 'filled');
-grid on;
-xlabel('Number of Principal Components');
-ylabel('Cumulative Explained Variance (%)');
-title('Cumulative Percentage of Explained Variance');
+% Print and Plots
+fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', ...
+        k, sum(ExplainedVar)*100);
+Plot_PCA_Variance(ExplainedVar)
+Plot_PCA_Cumulative(n_pc, CumExplVar)
 
-%% Maximum Sharpe Ratio Optimization (PCA model)
+%% 4.b) Maximum Sharpe Ratio & Conditional Value-at-Risk Ptfs
 
 func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
 [w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, A, b, Aeq, beq, lb, ub, [], options);
-disp('--- Risultati ---');
-disp(['Sharpe Ratio: ', num2str(-fval_sharpe)]);
-disp(['Volatilità (CovarPCA): ', num2str(sqrt(w_sharpe' * CovarPCA * w_sharpe))]);
-disp(['Esposizione v1: ', num2str(w_sharpe' * v1)]);
+
+Print_Sharpe_Portfolio(w, fval_sharpe, CovarPCA, v1) % CHECK THIS !!!!!!!!
+
+alpha_tail = 0.05;
+target_vol_ann = 0.10; 
+target_vol_daily = target_vol_ann / sqrt(252); 
+
+% Funzione Obiettivo: Min CVaR
+func_cvar = @(w) compute_historical_cvar(w, logret, alpha_tail);
+
+% VINCOLO 1: Target Volatility 10% (Non lineare - Uguaglianza)
+% Se il solver non trova soluzione, questo è il vincolo che "stringe" troppo
+nonlcon_vol = @(w) deal([], sqrt(w' * cov(logret) * w) - target_vol_daily);
+
+% VINCOLI 2 e 3: Standard Constraints (Somma=1, Max=0.25)
+NumAssets = size(logret, 2);
+x0 = ones(NumAssets, 1) / NumAssets;
+Aeq = ones(1, NumAssets); 
+beq = 1;
+lb  = zeros(NumAssets, 1);       % No short selling
+ub  = ones(NumAssets, 1) * 0.25; % Max weight 25% (Standard Constraint)
+
+[w_cvar, min_cvar_val, exitflag, output] = fmincon(func_cvar, x0, [], [], Aeq, beq, lb, ub, nonlcon_vol, options);
+
+vol_ottenuta = sqrt(w_cvar' * cov(logret) * w_cvar) * sqrt(252);
+
+disp('-----------------------------------------');
+if exitflag > 0
+    disp('Ottimizzazione riuscita!');
+else
+    disp('ATTENZIONE: Il solver non ha trovato una soluzione fattibile.');
+    disp('Probabilmente il target del 10% di volatilità è impossibile da raggiungere.');
+end
+disp('Target Volatilità Richiesto: 10%');
+disp(['Volatilità Raggiunta: ', num2str(vol_ottenuta*100), '%']);
+disp(['CVaR (5%): ', num2str(min_cvar_val)]);
+disp('-----------------------------------------');

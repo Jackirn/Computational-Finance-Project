@@ -1,20 +1,21 @@
 function Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
                               w_MVP, w_MSRP, w_MVP_RF, w_MSRP_RF, V, ExpRet, rf)
-%PLOT_ROBUST_FRONTIER Plots comparison between Standard and Robust frontiers
-%   Inputs:
-%       FrontierVola, FrontierRet: Standard frontier from point (a)
-%       meanRisk, meanRet: Robust frontier from point (b)
-%       w_MVP, w_MSRP: Standard portfolio weights
-%       w_MVP_RF, w_MSRP_RF: Robust portfolio weights
-%       V, ExpRet: Covariance matrix and expected returns
-%       rf: Risk-free rate
+%PLOT_BOTH_FRONTIERS Plots comparison between Standard and Robust frontiers
+%   Only the efficient branch (R >= MVP) is shown
 
     % Ensure column vector for ExpRet
     ExpRet = ExpRet(:);
 
-    % Remove NaN points if any
-    valid_std = ~isnan(FrontierVola) & ~isnan(FrontierRet);
-    valid_rob = ~isnan(meanRisk) & ~isnan(meanRet);
+    % --- Find MVP points ---
+    [~, idx_MVP_std] = min(FrontierVola);
+    ret_MVP_std = FrontierRet(idx_MVP_std);
+    
+    [~, idx_MVP_rob] = min(meanRisk);
+    ret_MVP_rob = meanRet(idx_MVP_rob);
+
+    % --- Filter only efficient points ---
+    efficient_std = FrontierRet >= ret_MVP_std;
+    efficient_rob = meanRet >= ret_MVP_rob;
 
     % Standard portfolios (A, B)
     vol_MVP  = sqrt(w_MVP'  * V * w_MVP);
@@ -30,16 +31,16 @@ function Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
     
     figure('Position', [100, 100, 1000, 700]);
     
-    % Plot Standard Frontier
-    plot(FrontierVola(valid_std)*100, FrontierRet(valid_std)*100, 'LineWidth', 2.5, ...
+    % Plot Standard Frontier (efficient branch)
+    plot(FrontierVola(efficient_std)*100, FrontierRet(efficient_std)*100, 'LineWidth', 2.5, ...
          'Color', [0 0.45 0.74], 'DisplayName', 'Standard Frontier'); % blu
     hold on;
     
-    % Plot Robust Frontier
-    plot(meanRisk(valid_rob)*100, meanRet(valid_rob)*100, 'LineWidth', 2.5, ...
+    % Plot Robust Frontier (efficient branch)
+    plot(meanRisk(efficient_rob)*100, meanRet(efficient_rob)*100, 'LineWidth', 2.5, ...
          'Color', [0.85 0.33 0.10], 'DisplayName', 'Robust Frontier'); % arancione
     
-    % Plot Standard Portfolios (A, B)
+    % Plot portfolios as before
     scatter(vol_MVP*100, ret_MVP*100, 120, 'filled', ...
             'MarkerFaceColor', [0 0.45 0.74], 'MarkerEdgeColor', 'k', ...
             'LineWidth', 1.5, 'DisplayName', 'Portfolio A (Standard MVP)');
@@ -47,7 +48,6 @@ function Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
             'MarkerFaceColor', [0 0.45 0.74], 'MarkerEdgeColor', 'k', ...
             'LineWidth', 1.5, 'DisplayName', 'Portfolio B (Standard MSRP)');
     
-    % Plot Robust Portfolios (C, D)
     scatter(vol_MVP_RF*100, ret_MVP_RF*100, 120, 'filled', ...
             'MarkerFaceColor', [0.85 0.33 0.10], 'MarkerEdgeColor', 'k', ...
             'LineWidth', 1.5, 'DisplayName', 'Portfolio C (Robust MVP)');
@@ -55,11 +55,11 @@ function Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
             'MarkerFaceColor', [0.85 0.33 0.10], 'MarkerEdgeColor', 'k', ...
             'LineWidth', 1.5, 'DisplayName', 'Portfolio D (Robust MSRP)');
     
-    % Add Capital Allocation Lines
+    % Add CAL lines (unchanged)
     x_max = max([FrontierVola(:); meanRisk(:)]) * 100 * 1.1;
     x_line = [0, x_max];
     
-    rf_plot = rf * 100;  % convert for plotting
+    rf_plot = rf * 100;  
     sharpe_std = (ret_MSRP - rf) / vol_MSRP;
     sharpe_rf  = (ret_MSRP_RF - rf) / vol_MSRP_RF;
     
