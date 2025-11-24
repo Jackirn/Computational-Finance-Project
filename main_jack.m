@@ -512,10 +512,8 @@ nonlcon_vol = @(w) deal([], sqrt(w' * cov(logret) * w) - target_vol_daily);
 
 % VINCOLI 2 e 3: Standard Constraints (Somma=1, Max=0.25)
 NumAssets = size(logret, 2);
-x0 = ones(NumAssets, 1) / NumAssets;
 Aeq = ones(1, NumAssets); 
 beq = 1;
-lb  = zeros(NumAssets, 1);       % No short selling
 ub  = ones(NumAssets, 1) * 0.25; % Max weight 25% (Standard Constraint)
 
 [w_cvar, min_cvar_val, exitflag, output] = fmincon(func_cvar, x0, [], [], Aeq, beq, lb, ub, nonlcon_vol, options);
