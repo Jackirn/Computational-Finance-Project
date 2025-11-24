@@ -18,3 +18,7 @@
 
 # VSCode / editors
 .vscode/
+
+#Python cache
+__pycache__/
+.venv/
