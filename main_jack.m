@@ -1,4 +1,4 @@
-clear 
+clear all
 close all
 clc
 rng(42)
@@ -151,13 +151,14 @@ SharpeFrontier = (FrontierRet - rf) ./ FrontierVola;
 w_MSRP = WeightsFrontier(:, idx_MSRP);
 vol_MSRP = FrontierVola(idx_MSRP);
 ret_MSRP = FrontierRet(idx_MSRP);
+SR = SharpeFrontier(idx_MSRP);
 
 % Print and Plot
-Print_Ptfs(ret_MVP, vol_MVP, w_MVP, 'A (MVP)')
-Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)')
+Print_Ptfs(ret_MVP, vol_MVP, w_MVP, 'A (MVP)',0,SR)
+Print_Ptfs(ret_MSRP, vol_MSRP, w_MSRP, 'B (MSRP)',1,SR)
 Plot_Frontier(FrontierVola,FrontierRet,NumAssets,V,ExpRet,SharpeFrontier)
 
-%% 1.b Robust Frontier
+%% 1.b) Robust Frontier
 
 p = Portfolio('AssetList', nm);    
 p = setDefaultConstraints(p);          % weight sum = 1, w >= 0
@@ -211,7 +212,7 @@ meanWeights  = meanWeights(:, valid_points);
 ret_MVP_RF = RobustRet(idx_MVP_RF);
 w_MVP_RF   = meanWeights(:, idx_MVP_RF);
 
-Print_Ptfs(ret_MVP_RF, vol_MVP_RF, w_MVP_RF, 'C (Robust MVP)');
+Print_Ptfs(ret_MVP_RF, vol_MVP_RF, w_MVP_RF, 'C (Robust MVP)',0,SR);
 
 % Robust MSRP (D): punto con massimo Sharpe rispetto a rf
 SharpeRatios_RF = (RobustRet - rf) ./ RobustRisk;
@@ -219,9 +220,10 @@ SharpeRatios_RF = (RobustRet - rf) ./ RobustRisk;
 w_MSRP_RF   = meanWeights(:, idx_MSRP_RF);
 vol_MSRP_RF = RobustRisk(idx_MSRP_RF);
 ret_MSRP_RF = RobustRet(idx_MSRP_RF);
+SR_R = SharpeRatios_RF(idx_MSRP_RF);
 
 % Print and Plots
-Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)');
+Print_Ptfs(ret_MSRP_RF, vol_MSRP_RF, w_MSRP_RF, 'D (Robust MSRP)',1,SR_R);
 Plot_Robust_Frontier(RobustRisk, RobustRet, NumAssets, V, ExpRet, ...
                      w_MVP_RF, w_MSRP_RF, rf);
 Plot_Both_Frontiers(FrontierVola, FrontierRet, RobustRisk, RobustRet, ...
@@ -309,9 +311,10 @@ SharpeFrontier_BL = (FrontierRet_BL - rf) ./ FrontierVola_BL;
 w_MSRP_BL = WeightsFrontier_BL(:, idx_MSRP_BL);
 vol_MSRP_BL = FrontierVola_BL(idx_MSRP_BL);
 ret_MSRP_BL = FrontierRet_BL(idx_MSRP_BL);
+SR_BL = SharpeFrontier_BL(idx_MSRP_BL);
 
-Print_Ptfs(ret_MVP_BL, vol_MVP_BL, w_MVP_BL, 'E (BL MVP)')
-Print_Ptfs(ret_MSRP_BL, vol_MSRP_BL, w_MSRP_BL, 'F (BL MSRP)')
+Print_Ptfs(ret_MVP_BL, vol_MVP_BL, w_MVP_BL, 'E (BL MVP)',0,SR_BL)
+Print_Ptfs(ret_MSRP_BL, vol_MSRP_BL, w_MSRP_BL, 'F (BL MSRP)',1,SR_BL)
 
 %% Point 3.a) Compute the Portfolio with Maximum Diversification Ratio
 
@@ -369,7 +372,7 @@ end
 w_opt_MDR = weights_DR_frontier(:, idx_MDR);
 
 % Print and Plot
-Print_MDR_Ptf(w_opt_MDR, DR_vals, target_Vol,idx_MDR)
+Print_MDR_Ptf(w_opt_MDR, DR_vals, target_Vol,idx_MDR,ExpRet)
 Plot_DR_Frontier(target_Vol, DR_vals);
 
 %% Compute the Portfolio with Maximum Entropy in risk contributions
@@ -403,7 +406,7 @@ end
 w_opt_ME = weights_ENT_frontier(:,idx_ME); % portfolio H.
 
 % Print and Plot
-Print_ME_Ptf(w, Entropy_vals, target_Vol, idx_ME)
+Print_ME_Ptf(w, Entropy_vals, target_Vol, idx_ME, ExpRet)
 Plot_Entropy_Frontier(target_Vol, Entropy_vals)
 
 %% 3.b) Compare this ptfs with the equally weighted benchmark in terms of: 
@@ -492,42 +495,47 @@ fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', ...
 Plot_PCA_Variance(ExplainedVar)
 Plot_PCA_Cumulative(n_pc, CumExplVar)
 
-%% 4.b) Maximum Sharpe Ratio & Conditional Value-at-Risk Ptfs
+%% 4.b) Portfolio I-J: Maximum Sharpe Ratio & Minimum CVaR with Target Volatility
 
+% Max Sharpe Ratio Ptf
 func_sharpe = @(x) - ((muR*x) / sqrt(x'*CovarPCA*x));
-[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, A, b, Aeq, beq, lb, ub, [], options);
+[w_sharpe, fval_sharpe] = fmincon(func_sharpe, x0, [],[],Aeq,beq,lb,ub, [], options);
+Print_Sharpe_PCA(w_sharpe, fval_sharpe, CovarPCA,ExpRet)
 
-Print_Sharpe_Portfolio(w, fval_sharpe, CovarPCA, v1) % CHECK THIS !!!!!!!!
-
+% Minimun CVaR Ptf
 alpha_tail = 0.05;
 target_vol_ann = 0.10; 
-target_vol_daily = target_vol_ann / sqrt(252); 
+target_vol_daily = target_vol_ann / sqrt(252);
 
 % Funzione Obiettivo: Min CVaR
 func_cvar = @(w) compute_historical_cvar(w, logret, alpha_tail);
 
-% VINCOLO 1: Target Volatility 10% (Non lineare - Uguaglianza)
-% Se il solver non trova soluzione, questo è il vincolo che "stringe" troppo
-nonlcon_vol = @(w) deal([], sqrt(w' * cov(logret) * w) - target_vol_daily);
+% Target Volatility 10%
+nonlcon_vol = @(w) deal(sqrt(w' * cov(logret) * w) - target_vol_daily, []);
 
-% VINCOLI 2 e 3: Standard Constraints (Somma=1, Max=0.25)
 NumAssets = size(logret, 2);
+
+% Calcola portafoglio a minima varianza con vincoli del Portafoglio J
+cov_matrix = cov(logret);
+fun_minvar = @(w) w' * cov_matrix * w;
+
+% Vincoli Portafoglio J
 Aeq = ones(1, NumAssets); 
 beq = 1;
-ub  = ones(NumAssets, 1) * 0.25; % Max weight 25% (Standard Constraint)
+lb = zeros(NumAssets, 1);
+ub = ones(NumAssets, 1) * 0.25;
+
+[w_minvar_j, min_var] = fmincon(fun_minvar, x0, [], [], Aeq, beq, lb, ub, [], options);
+min_vol_j = sqrt(min_var) * sqrt(252);
 
 [w_cvar, min_cvar_val, exitflag, output] = fmincon(func_cvar, x0, [], [], Aeq, beq, lb, ub, nonlcon_vol, options);
 
+% Calcola metriche del portafoglio risultante
 vol_ottenuta = sqrt(w_cvar' * cov(logret) * w_cvar) * sqrt(252);
+returns_portfolio = logret * w_cvar;
+portfolio_cvar = compute_historical_cvar(w_cvar, logret, alpha_tail);
 
-disp('-----------------------------------------');
-if exitflag > 0
-    disp('Ottimizzazione riuscita!');
-else
-    disp('ATTENZIONE: Il solver non ha trovato una soluzione fattibile.');
-    disp('Probabilmente il target del 10% di volatilità è impossibile da raggiungere.');
-end
-disp('Target Volatilità Richiesto: 10%');
-disp(['Volatilità Raggiunta: ', num2str(vol_ottenuta*100), '%']);
-disp(['CVaR (5%): ', num2str(min_cvar_val)]);
-disp('-----------------------------------------');
+% Print
+Print_Portfolio_J(min_vol_j, target_vol_ann, exitflag, output, ...
+                           vol_ottenuta, portfolio_cvar, returns_portfolio, ...
+                           w_cvar)

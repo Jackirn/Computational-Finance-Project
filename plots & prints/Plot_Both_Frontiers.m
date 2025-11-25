@@ -80,4 +80,6 @@ function Plot_Both_Frontiers(FrontierVola, FrontierRet, meanRisk, meanRet, ...
     box on;
     set(gca, 'FontSize', 11);
     hold off;
+
+    % exportgraphics(gcf, 'Plots/entrambe.pdf', 'ContentType', 'vector');
 end

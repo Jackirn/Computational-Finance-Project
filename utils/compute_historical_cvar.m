@@ -1,9 +1,6 @@
-function cvar = compute_historical_cvar(w, returns, alpha)
-    port_returns = returns * w;
-    % Definizione Perdite = -Rendimenti
-    losses = -port_returns;
-    % VaR è il quantile (1-alpha) delle perdite
-    VaR = prctile(losses, (1-alpha)*100);
-    % CVaR è la media delle perdite superiori al VaR
-    cvar = mean(losses(losses >= VaR));
+function cvar = compute_historical_cvar(weights, returns, alpha)
+    portfolio_returns = returns * weights;
+    var_level = quantile(portfolio_returns, alpha);
+    tail_returns = portfolio_returns(portfolio_returns <= var_level);
+    cvar = mean(tail_returns);
 end

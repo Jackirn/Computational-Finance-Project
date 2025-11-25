@@ -1,12 +1,13 @@
-function Print_ME_Ptf(w, Entropy_vals, vol_value, idx_ME)
+function Print_ME_Ptf(w, Entropy_vals, vol_value, idx_ME, ExpRet)
 % PRINT_ME_PTF  Pretty-print Maximum Entropy portfolio.
 
     fprintf('\n===============================================================\n');
     fprintf('                Portfolio H – Maximum Entropy Portfolio       \n');
     fprintf('===============================================================\n');
-
-    fprintf('Entropy:    %8.4f\n', Entropy_vals(idx_ME));
-    fprintf('Volatility: %8.3f%%\n', vol_value(idx_ME) * 100);
+    
+    fprintf('Expected Return:    %8.4f%%\n', w*ExpRet'*100);
+    fprintf('Entropy:            %8.4f\n', Entropy_vals(idx_ME));
+    fprintf('Volatility:         %8.3f%%\n', vol_value(idx_ME) * 100);
 
     fprintf('---------------------------------------------------------------\n');
     fprintf('Top 3 Holdings:\n');

@@ -1,4 +1,4 @@
-function Print_Ptfs(ret,vol,w,name)
+function Print_Ptfs(ret,vol,w,name,flag,SR)
     fprintf('\n===============================================================\n');
     fprintf('                     Portfolio %-10s\n', name);
     fprintf('===============================================================\n');
@@ -6,6 +6,10 @@ function Print_Ptfs(ret,vol,w,name)
     % Core stats
     fprintf('Expected Return:      %8.3f%%\n', ret * 100);
     fprintf('Volatility:           %8.3f%%\n', vol * 100);
+
+    if (flag == 1)
+        fprintf('Sharpe Ratio:         %8.3f\n', SR);
+    end
 
     % Top holdings
     fprintf('---------------------------------------------------------------\n');
