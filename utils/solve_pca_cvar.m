@@ -75,7 +75,10 @@ function [PCA_Res, CVaR_Res] = solve_pca_cvar(data, constr)
     % Objective: Minimize negative Sharpe Ratio using PCA Covariance
     func_sharpe = @(x) - ((muR*x) / sqrt(x' * CVaR_Res.CovarPCA * x));
     
-    [w_s, fval_s] = fmincon(func_sharpe, x0, [], [], constr.Aeq, constr.beq, lb_local, ub_local, [], options);
+    v1 = Loadings_All(:, 1); % First eigenvector
+    
+    % A = v1', b = 0.5
+    [w_s, fval_s] = fmincon(func_sharpe, x0, v1', 0.5, constr.Aeq, constr.beq, lb_local, ub_local, [], options);  
     
     CVaR_Res.w_sharpe = w_s;
     CVaR_Res.fval_sharpe = fval_s; % Result is negative (minimization), print function handles sign.
