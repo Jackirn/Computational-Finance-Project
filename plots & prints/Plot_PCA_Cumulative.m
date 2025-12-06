@@ -5,7 +5,7 @@ function Plot_PCA_Cumulative(n_pc, CumExplVar)
     figure;
     plot(n_pc, CumExplVar, 'm', 'LineWidth', 2);
     hold on;
-    yline(85, '--r', '85% Threshold', 'LineWidth', 1.5, 'LabelHorizontalAlignment','left', 'FontSize',12);
+    yline(80, '--r', '80% Threshold', 'LineWidth', 1.5, 'LabelHorizontalAlignment','left', 'FontSize',12);
     scatter(n_pc, CumExplVar, 'm', 'filled');
     grid on;
     xlabel('Number of Principal Components');

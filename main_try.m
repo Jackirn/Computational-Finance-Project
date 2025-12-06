@@ -33,21 +33,37 @@ Print_Ptfs(RobustRes.ret_MSRP, RobustRes.vol_MSRP, RobustRes.w_MSRP, 'D (Robust 
 Plot_Robust_Frontier(RobustRes.Risk, RobustRes.Ret, NumAssets, data.V, data.ExpRet, RobustRes.w_MVP, RobustRes.w_MSRP, constr.rf);
 Plot_Both_Frontiers(Frontier_MV.Vol, Frontier_MV.Ret, RobustRes.Risk, RobustRes.Ret, w_MVP, w_MSRP, RobustRes.w_MVP, RobustRes.w_MSRP, data.V, data.ExpRet, constr.rf);
 
-%% Point 2: Black-Litterman
-fprintf('Computing Black-Litterman...\n');
+%% Point 2: Black-Litterman Frontier
+fprintf('Computing Black-Litterman Frontier...\n');
+
+% 2.a–2.c: calcolo dei rendimenti posteriori Black–Litterman
 [mu_BL, ~] = solve_black_litterman(data, 3); % 3 views
 
-constr_BL = constr; 
-constr_BL.ub = ones(NumAssets, 1);     % no ub
-constr_BL.b(end-NumAssets+1:end) = 1;  % update b for new ub
+constr_BL = struct();
 
-% Recompute frontier with new constraints
+% No short-selling
+constr_BL.lb  = zeros(NumAssets, 1);
+constr_BL.ub  = ones(NumAssets, 1);
+
+% Nessun vincolo di gruppo: A x <= b vuoto
+constr_BL.A   = [];
+constr_BL.b   = [];
+
+% Full investment: somma w = 1
+constr_BL.Aeq = ones(1, NumAssets);
+constr_BL.beq = 1;
+
+% Risk-free coerente con il resto del codice
+constr_BL.rf  = constr.rf;
+
+% Frontier BL con i nuovi vincoli standard
 [Frontier_BL, idx_MVP_BL, idx_MSRP_BL] = solve_efficient_frontier(mu_BL', data.V, constr_BL, 100);
 
-% Output
+% Output portafogli E (BL MVP) e F (BL MSRP)
 w_MVP_BL  = Frontier_BL.Weights(:, idx_MVP_BL);
 w_MSRP_BL = Frontier_BL.Weights(:, idx_MSRP_BL);
-Print_Ptfs(Frontier_BL.Ret(idx_MVP_BL), Frontier_BL.Vol(idx_MVP_BL), w_MVP_BL, 'E (BL MVP)', 0, Frontier_BL.Sharpe(idx_MSRP_BL));
+
+Print_Ptfs(Frontier_BL.Ret(idx_MVP_BL),  Frontier_BL.Vol(idx_MVP_BL),  w_MVP_BL,  'E (BL MVP)',  0, Frontier_BL.Sharpe(idx_MSRP_BL));
 Print_Ptfs(Frontier_BL.Ret(idx_MSRP_BL), Frontier_BL.Vol(idx_MSRP_BL), w_MSRP_BL, 'F (BL MSRP)', 1, Frontier_BL.Sharpe(idx_MSRP_BL));
 
 %% Point 3: Alternative Risk (MDR & Entropy)
