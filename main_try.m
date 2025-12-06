@@ -76,7 +76,7 @@ fprintf('Computing PCA and CVaR Optimization...\n');
 [PCA_Res, CVaR_Res] = solve_pca_cvar(data, constr);
 
 % Output PCA
-fprintf('Selezionati k=%d fattori. Varianza Totale Spiegata: %.2f%%\n', PCA_Res.k, sum(PCA_Res.ExplainedVar)*100);
+fprintf('Selected k=%d factors. Total Explained Variance: %.2f%%\n', PCA_Res.k, sum(PCA_Res.ExplainedVar)*100);
 Plot_PCA_Variance(PCA_Res.ExplainedVar);
 Plot_PCA_Cumulative(PCA_Res.n_pc, PCA_Res.CumExplVar);
 
