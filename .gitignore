@@ -22,3 +22,8 @@
 #Python cache
 __pycache__/
 .venv/
+
+# cartelle varie da non tracciare
+not_used/
+codice_prof/
+Plots/
