@@ -81,6 +81,12 @@ A deep-learning allocator based on:
 	•	Objective: maximize risk-adjusted returns with regularization
 	•	Tested out-of-sample on 2023–2024
 
+file to run:
+
+```python
+main_py
+```
+
 ⸻
 
 ## Output
