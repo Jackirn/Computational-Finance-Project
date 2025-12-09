@@ -43,7 +43,7 @@ function new_constr = update_constraints_point3(old_constr, groups)
     new_constr.A = [A_cyc; A_def; eye(NumAssets)]; 
     new_constr.b = [b_cyc; b_def; new_constr.ub];
     
-    % 4. Equality Constraints
+    % Equality Constraints
     % Fully invested constraint: sum(w) = 1
     new_constr.Aeq = ones(1, NumAssets);
     new_constr.beq = 1;

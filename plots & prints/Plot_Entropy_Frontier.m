@@ -9,5 +9,5 @@ function Plot_Entropy_Frontier(target_Vol, Entropy_vals)
     title('Entropy–Risk Frontier', 'FontSize', 14);
 
     grid on;
-
+    %exportgraphics(gcf, 'Plots/div_entr.pdf', 'ContentType', 'vector')
 end

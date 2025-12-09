@@ -12,5 +12,5 @@ function Plot_PCA_Cumulative(n_pc, CumExplVar)
     ylabel('Cumulative Explained Variance (%)');
     title('Cumulative Percentage of Explained Variance');
     hold off;
-    %exportgraphics(gcf, 'Plots/PCA_cum.pdf', 'ContentType', 'vector')
+    exportgraphics(gcf, 'Plots/PCA_cum.pdf', 'ContentType', 'vector')
 end

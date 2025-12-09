@@ -45,21 +45,20 @@ constr_BL = struct();
 constr_BL.lb  = zeros(NumAssets, 1);
 constr_BL.ub  = ones(NumAssets, 1);
 
-% Nessun vincolo di gruppo: A x <= b vuoto
 constr_BL.A   = [];
 constr_BL.b   = [];
 
-% Full investment: somma w = 1
+% Full investment
 constr_BL.Aeq = ones(1, NumAssets);
 constr_BL.beq = 1;
 
-% Risk-free coerente con il resto del codice
+% Risk-free
 constr_BL.rf  = constr.rf;
 
-% Frontier BL con i nuovi vincoli standard
+% Frontier BL 
 [Frontier_BL, idx_MVP_BL, idx_MSRP_BL] = solve_efficient_frontier(mu_BL', data.V, constr_BL, 100);
 
-% Output portafogli E (BL MVP) e F (BL MSRP)
+% Output ptfs E (BL MVP) and F (BL MSRP)
 w_MVP_BL  = Frontier_BL.Weights(:, idx_MVP_BL);
 w_MSRP_BL = Frontier_BL.Weights(:, idx_MSRP_BL);
 

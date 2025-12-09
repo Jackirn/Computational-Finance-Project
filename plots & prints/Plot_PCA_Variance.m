@@ -23,5 +23,5 @@ function Plot_PCA_Variance(ExplainedVar)
         text(i, ExplainedVar(i)*100 + 1, sprintf('%.1f%%', ExplainedVar(i)*100), ...
             'HorizontalAlignment', 'center', 'FontSize', 11);
     end
-    %exportgraphics(gcf, 'Plots/PCA_var.pdf', 'ContentType', 'vector')
+    exportgraphics(gcf, 'Plots/PCA_var.pdf', 'ContentType', 'vector')
 end
