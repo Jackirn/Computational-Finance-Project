@@ -26,4 +26,5 @@ __pycache__/
 # cartelle varie da non tracciare
 not_used/
 codice_prof/
-Plots/ExamC_2025.pdf
+Plots/
+ExamC_2025.pdf
