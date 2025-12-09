@@ -111,6 +111,7 @@ This project was developed by:
 - [**Filippo Cuoghi**](https://github.com/FilippoC444)
 - [**Francesco Ligorio**](https://github.com/Lygobot)
 - [**Luigi Di Gregorio**](https://github.com/LvSkywalker)
-Computational Finance – Exam Version C
-MSc Mathematical Engineering
-Politecnico di Milano — 2025
+
+Computational Finance – Exam Version C  
+MSc Mathematical Engineering  
+Politecnico di Milano – 2025
