@@ -232,7 +232,4 @@ plt.title('Drawdown Profile')
 plt.ylabel('Drawdown %')
 plt.legend()
 plt.grid(True)
-
-plt.tight_layout()
-plt.savefig('Plots/performance_plot.png')
 plt.show()
