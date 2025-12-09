@@ -104,7 +104,13 @@ All figures can optionally be saved inside the Plots/ directory.
 
 ## Authors
 
-Giacomo Kirn, Riccardo Girgenti, Filippo Cuoghi, Francesco Ligorio, Luigi di Gregorio
+This project was developed by:
+
+- **Giacomo Kirn** (@Jackirin)  
+- **Riccardo Girgenti** (@rikygirg)  
+- **Filippo Cuoghi** (@FilippoC444)  
+- **Francesco Ligorio** (@Lygobot)  
+- **Luigi Di Gregorio** (@LvSkywalker)
 Computational Finance – Exam Version C
 MSc Mathematical Engineering
 Politecnico di Milano — 2025
