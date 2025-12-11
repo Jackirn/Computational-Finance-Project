@@ -9,9 +9,14 @@ import matplotlib.pyplot as plt
 
 csv_path_prices = "csv/asset_prices.csv"          
 csv_path_caps   = "csv/capitalization_weights.csv" 
+csv_path_prices_os = "csv/asset_prices_out_of_sample.csv"
 
 df_prices = pd.read_csv(csv_path_prices, index_col=0, parse_dates=True)
 df_prices = df_prices.sort_index()
+
+df_prices_os = pd.read_csv(csv_path_prices_os, index_col=0, parse_dates=True)
+df_prices = pd.concat([df_prices, df_prices_os], axis=0)
+df_prices = df_prices.sort_index()  
 
 cap = pd.read_csv(csv_path_caps)
 cap = cap.set_index("Asset")
@@ -28,7 +33,6 @@ T, n_assets = prices.shape
 df_returns = df_prices.pct_change().dropna()
 returns = df_returns.values
 ret_dates = df_returns.index
-
 
 # Parameters and Preprocessing
 
@@ -233,3 +237,56 @@ plt.ylabel('Drawdown %')
 plt.legend()
 plt.grid(True)
 plt.show()
+
+#   Out-of-sample 2025
+
+mask_2025 = (dates_backtest >= pd.Timestamp("2025-01-01")) & \
+            (dates_backtest <= pd.Timestamp("2025-12-31"))
+
+ret_2025    = strategy_returns[mask_2025]
+bench_2025  = benchmark_returns[mask_2025]
+dates_2025  = dates_backtest[mask_2025]
+
+if len(ret_2025) == 0:
+    print("\n[Warning] Nessun dato di backtest nel 2025 (controlla le date del CSV OOS).")
+else:
+    # Cumulative returns 2025
+    cum_strat_2025  = (1 + ret_2025).cumprod()
+    cum_bench_2025  = (1 + bench_2025).cumprod()
+
+    dd_2025, max_dd_2025 = get_drawdown(cum_strat_2025)
+
+    ann_factor      = 252
+    mean_ret_2025   = ret_2025.mean() * ann_factor
+    vol_ret_2025    = ret_2025.std() * np.sqrt(ann_factor)
+    sharpe_2025     = mean_ret_2025 / vol_ret_2025 if vol_ret_2025 > 0 else 0
+    calmar_2025     = mean_ret_2025 / abs(max_dd_2025) if max_dd_2025 < 0 else 0
+
+    print(f"\n=== Performance Report (2025 only) ===")
+    print(f"Annualized Return:     {mean_ret_2025:.2%}")
+    print(f"Annualized Volatility: {vol_ret_2025:.2%}")
+    print(f"Sharpe Ratio:          {sharpe_2025:.2f}")
+    print(f"Max Drawdown:          {max_dd_2025:.2%}")
+    print(f"Calmar Ratio:          {calmar_2025:.2f}")
+
+    # Plot equity curve 2025
+    plt.figure(figsize=(8, 5))
+    plt.plot(dates_2025, cum_strat_2025, label="NN Strategy 2025", color="blue")
+    plt.plot(dates_2025, cum_bench_2025, label="Market Benchmark 2025", color="gray", linestyle="--")
+    plt.title("Cumulative Returns – Out-of-Sample 2025")
+    plt.ylabel("Growth Factor")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # Plot drawdown 2025
+    plt.figure(figsize=(8, 4))
+    plt.fill_between(dates_2025, dd_2025, 0, color='red', alpha=0.3, label='Strategy Drawdown 2025')
+    plt.plot(dates_2025, dd_2025, color='red', linewidth=1)
+    plt.title('Drawdown Profile – 2025')
+    plt.ylabel('Drawdown')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
